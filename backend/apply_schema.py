@@ -1,32 +1,39 @@
 import mysql.connector
-from db_utils import get_db_connection
+from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
 
-def apply_schema():
-    conn = get_db_connection()
-    if not conn:
-        print("Failed to connect to DB")
-        return
-
-    cursor = conn.cursor()
-    
-    with open('../database/schema.sql', 'r') as f:
-        schema_sql = f.read()
-    
-    # Split by semicolon to execute multiple statements
-    statements = schema_sql.split(';')
-    
-    for statement in statements:
-        if statement.strip():
-            try:
-                cursor.execute(statement)
-            except mysql.connector.Error as err:
-                print(f"Error executing statement: {err}")
-                # Continue even if error (e.g. table exists)
-    
-    conn.commit()
-    cursor.close()
-    conn.close()
-    print("Schema applied successfully.")
+def apply_schema_updates():
+    try:
+        conn = mysql.connector.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME
+        )
+        cursor = conn.cursor()
+        
+        # Create predictions table
+        create_predictions_table = """
+        CREATE TABLE IF NOT EXISTS predictions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            symbol VARCHAR(20),
+            prediction_time TIMESTAMP, -- The time for which the prediction is made (future)
+            predicted_open DECIMAL(20, 8),
+            predicted_high DECIMAL(20, 8),
+            predicted_low DECIMAL(20, 8),
+            predicted_close DECIMAL(20, 8),
+            confidence_score DECIMAL(5, 2),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (symbol) REFERENCES coins(symbol)
+        );
+        """
+        cursor.execute(create_predictions_table)
+        print("Table 'predictions' checked/created.")
+        
+        conn.commit()
+        conn.close()
+        
+    except mysql.connector.Error as err:
+        print(f"Error applying schema updates: {err}")
 
 if __name__ == "__main__":
-    apply_schema()
+    apply_schema_updates()

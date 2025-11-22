@@ -1,8 +1,11 @@
 import time
+import warnings
+warnings.filterwarnings('ignore')
 import data_ingest
 import analysis_engine
 import trading_engine
 import learning_engine
+import prediction_engine
 from db_utils import get_db_connection
 
 def main():
@@ -41,6 +44,11 @@ def main():
                         
                         # Trade
                         trading_engine.execute_trade(signal)
+                        
+                        # Generate Prediction
+                        prediction = prediction_engine.generate_prediction(symbol)
+                        if prediction:
+                            prediction_engine.save_prediction(prediction)
                         
             # 3. Learning
             print("[3] Learning...")

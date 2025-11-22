@@ -1,5 +1,6 @@
 import pandas as pd
-import pandas_ta as ta
+import warnings
+warnings.filterwarnings('ignore')
 from db_utils import get_db_connection
 import json
 
@@ -15,7 +16,18 @@ def get_historical_data(symbol, limit=100):
         ORDER BY close_time ASC 
         LIMIT {limit}
     """
-    df = pd.read_sql(query, conn)
+    
+    import warnings
+    # Suppress the specific SQLAlchemy warning
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
+        try:
+            df = pd.read_sql(query, conn)
+        except Exception as e:
+            print(f"Error reading data: {e}")
+            conn.close()
+            return None
+            
     conn.close()
     
     if df.empty:
@@ -33,15 +45,32 @@ def analyze_market(symbol):
 
     # Calculate Indicators
     # RSI
-    df['rsi'] = ta.rsi(df['close'], length=14)
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['rsi'] = 100 - (100 / (1 + rs))
     
     # MACD
-    macd = ta.macd(df['close'])
-    df = pd.concat([df, macd], axis=1)
+    exp1 = df['close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['close'].ewm(span=26, adjust=False).mean()
+    macd_line = exp1 - exp2
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    
+    # Add to dataframe (using same column names as before for compatibility if needed, or just using variables)
+    df['MACDh_12_26_9'] = macd_line - signal_line # Histogram
     
     # Bollinger Bands
-    bb = ta.bbands(df['close'])
-    df = pd.concat([df, bb], axis=1)
+    sma20 = df['close'].rolling(window=20).mean()
+    std20 = df['close'].rolling(window=20).std()
+    # df['BBL_20_2.0'] = sma20 - 2 * std20
+    # df['BBU_20_2.0'] = sma20 + 2 * std20
+    # We only need to append them if we use them later, but the logic below doesn't seem to explicitly use BB columns for signal, 
+    # just RSI and MACD. The original code concatenated them.
+    # For safety, let's keep the dataframe structure clean.
+    
+    # Remove pandas_ta import at the top if not done yet
+
     
     # Get latest row
     latest = df.iloc[-1]

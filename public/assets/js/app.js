@@ -115,19 +115,41 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update Header
             if (cryptoTitle) cryptoTitle.textContent = `${data.symbol} Market Analysis`;
             const lastCandle = data.candles[data.candles.length - 1];
-            if (currentPriceEl) currentPriceEl.textContent = `$${lastCandle.close.toFixed(2)}`;
+
+            // Dynamic Precision for Low-Value Coins (e.g. PEPE)
+            const price = lastCandle.close;
+            const precision = price < 1.0 ? 8 : 2;
+            const minMove = price < 1.0 ? 0.00000001 : 0.01;
+
+            if (currentPriceEl) currentPriceEl.textContent = `$${price.toFixed(precision)}`;
 
             // Calculate change (simple vs prev candle)
             const prevCandle = data.candles[data.candles.length - 2];
             const change = lastCandle.close - prevCandle.close;
             const changePercent = (change / prevCandle.close) * 100;
             if (priceChangeEl) {
-                priceChangeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent.toFixed(2)}%)`;
+                priceChangeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(precision)} (${changePercent.toFixed(2)}%)`;
                 priceChangeEl.className = change >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium';
             }
 
             // Update Chart
             if (candleSeries) {
+                // Apply Dynamic Precision
+                candleSeries.applyOptions({
+                    priceFormat: {
+                        type: 'price',
+                        precision: precision,
+                        minMove: minMove,
+                    },
+                });
+                predictionSeries.applyOptions({
+                    priceFormat: {
+                        type: 'price',
+                        precision: precision,
+                        minMove: minMove,
+                    },
+                });
+
                 candleSeries.setData(data.candles);
 
                 const markers = [];
@@ -211,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const searchWidget = document.getElementById('search-widget');
         if (searchWidget) {
             searchInput.addEventListener('input', async (e) => {
-                const query = e.target.value.trim();
+                const query = e.target.value.trim().toUpperCase();
                 if (query.length < 1) {
                     searchWidget.classList.add('hidden');
                     return;
@@ -222,9 +244,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const suggestions = await response.json();
 
                     searchWidget.innerHTML = '';
+                    searchWidget.classList.remove('hidden');
 
                     if (suggestions.length > 0) {
-                        searchWidget.classList.remove('hidden');
                         suggestions.forEach(symbol => {
                             const div = document.createElement('div');
                             div.className = 'search-item';
@@ -245,9 +267,28 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                             searchWidget.appendChild(div);
                         });
-                    } else {
-                        searchWidget.classList.add('hidden');
                     }
+
+                    // "Force Add" Option
+                    const addDiv = document.createElement('div');
+                    addDiv.className = 'search-item';
+                    addDiv.style.borderTop = '1px solid var(--border-color)';
+                    addDiv.innerHTML = `
+                        <div class="symbol text-[var(--accent-color)]">Add "${query}"</div>
+                        <div class="name">Fetch from Binance</div>
+                    `;
+                    addDiv.addEventListener('click', () => {
+                        searchInput.value = query;
+                        searchWidget.classList.add('hidden');
+                        if (window.location.pathname.includes('chart.php')) {
+                            currentSymbol = query;
+                            fetchData(currentSymbol);
+                        } else {
+                            window.location.href = `chart.php?symbol=${query}`;
+                        }
+                    });
+                    searchWidget.appendChild(addDiv);
+
                 } catch (e) {
                     console.error("Error fetching suggestions:", e);
                 }

@@ -1,0 +1,6 @@
+requests
+mysql-connector-python
+pandas
+numpy
+scikit-learn
+pandas_ta

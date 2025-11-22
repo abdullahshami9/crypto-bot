@@ -89,14 +89,8 @@ def update_historical_data(symbol, interval="1h"):
     print(f"Updating history for {symbol} ({len(candles)} candles)...")
 
     sql = """
-    INSERT INTO historical_candles (symbol, `interval`, open, high, low, close, volume, close_time)
+    REPLACE INTO historical_candles (symbol, `interval`, open, high, low, close, volume, close_time)
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    ON DUPLICATE KEY UPDATE
-        open = VALUES(open),
-        high = VALUES(high),
-        low = VALUES(low),
-        close = VALUES(close),
-        volume = VALUES(volume)
     """
 
     for candle in candles:

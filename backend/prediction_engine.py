@@ -30,7 +30,8 @@ def generate_prediction(symbol):
             conn.close()
             return None
             
-    conn.close()
+            
+    # conn.close() - Removed premature close
         
     if df.empty:
         return None
@@ -64,13 +65,25 @@ def generate_prediction(symbol):
     pred_high = max(pred_open, pred_close) + (volatility * 0.2)
     pred_low = min(pred_open, pred_close) - (volatility * 0.2)
     
-    # Confidence score based on trend strength
-    confidence = 50 + (abs(sma_short - sma_long) / last_close * 1000)
+    # Calculate Win Rate from Learning History
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) as total, SUM(CASE WHEN reward_score > 0 THEN 1 ELSE 0 END) as wins FROM trade_learning")
+    stats = cursor.fetchone()
+    
+    win_rate_bonus = 0
+    if stats and stats[0] > 0:
+        win_rate = stats[1] / stats[0]
+        win_rate_bonus = (win_rate - 0.5) * 20 # +/- bonus based on win rate vs 50%
+    
+    # Confidence score based on trend strength + Bot Win Rate
+    confidence = 50 + (abs(sma_short - sma_long) / last_close * 1000) + win_rate_bonus
     confidence = min(max(confidence, 10), 95) # Cap between 10 and 95
     
     # Prediction time is 15 mins from now (approx, just for display)
     # In reality, we'd align this to the next candle close time
     prediction_time = datetime.now() + timedelta(minutes=15)
+    
+    conn.close()
     
     return {
         "symbol": symbol,

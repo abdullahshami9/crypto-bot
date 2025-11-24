@@ -131,6 +131,9 @@ def update_historical_data(symbol, interval="1h"):
     conn.close()
 
 if __name__ == "__main__":
+    # Define intervals to track
+    intervals = ["15m", "1h", "4h", "1d", "1w", "1M"]
+    
     while True:
         print("Fetching market ticker...")
         data = fetch_market_data()
@@ -143,8 +146,10 @@ if __name__ == "__main__":
             top_pairs = sorted(usdt_pairs, key=lambda x: float(x['quoteVolume']), reverse=True)[:10]
             
             for item in top_pairs:
-                update_historical_data(item['symbol'], "1h")
-                time.sleep(1) # Avoid rate limits
-
+                print(f"Processing {item['symbol']}...")
+                for interval in intervals:
+                    update_historical_data(item['symbol'], interval)
+                    time.sleep(0.5) # Avoid rate limits
+                
         print("Sleeping for 60s...")
         time.sleep(60)

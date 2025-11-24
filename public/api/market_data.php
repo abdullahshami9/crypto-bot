@@ -31,11 +31,12 @@ try {
 }
 
 $symbol = isset($_GET['symbol']) ? $_GET['symbol'] : 'BTCUSDT';
+$interval = isset($_GET['interval']) ? $_GET['interval'] : '1h';
 $limit = isset($_GET['limit']) ? $_GET['limit'] : 100;
 
 // Helper to fetch from Binance
-function fetchBinanceCandles($symbol, $limit=100) {
-    $url = "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=1h&limit=$limit";
+function fetchBinanceCandles($symbol, $interval, $limit=100) {
+    $url = "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit";
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -46,30 +47,36 @@ function fetchBinanceCandles($symbol, $limit=100) {
 }
 
 // Fetch Historical Data from DB
-$stmt = $pdo->prepare("SELECT close_time, open, high, low, close, volume FROM historical_candles WHERE symbol = ? ORDER BY close_time ASC LIMIT ?");
-$stmt->execute([$symbol, $limit]);
+$stmt = $pdo->prepare("SELECT close_time, open, high, low, close, volume FROM historical_candles WHERE symbol = ? AND `interval` = ? ORDER BY close_time ASC LIMIT ?");
+$stmt->execute([$symbol, $interval, $limit]);
 $candles = $stmt->fetchAll();
 
-// Check if data is stale (older than 1 hour) or empty
+// Check if data is stale (older than interval duration) or empty
 $is_stale = false;
+$interval_seconds = 3600; // Default 1h
+if ($interval == '15m') $interval_seconds = 900;
+if ($interval == '4h') $interval_seconds = 14400;
+if ($interval == '1d') $interval_seconds = 86400;
+if ($interval == '1w') $interval_seconds = 604800;
+
 if (empty($candles)) {
     $is_stale = true;
 } else {
     $last_candle_time = strtotime(end($candles)['close_time']);
-    if (time() - $last_candle_time > 3600) {
+    if (time() - $last_candle_time > $interval_seconds) {
         $is_stale = true;
     }
 }
 
 if ($is_stale) {
     // Fetch fresh data from Binance
-    $binance_data = fetchBinanceCandles($symbol, $limit);
+    $binance_data = fetchBinanceCandles($symbol, $interval, $limit);
     
     if ($binance_data && is_array($binance_data)) {
         // Update DB using REPLACE INTO to handle duplicates gracefully
         $insert_stmt = $pdo->prepare("
             REPLACE INTO historical_candles (symbol, `interval`, open, high, low, close, volume, close_time)
-            VALUES (?, '1h', ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
         $candles = []; // Reset to fill with new data
@@ -81,6 +88,7 @@ if ($is_stale) {
             
             $insert_stmt->execute([
                 $symbol,
+                $interval,
                 $kline[1], $kline[2], $kline[3], $kline[4], $kline[5],
                 $close_time_str
             ]);

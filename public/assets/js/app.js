@@ -100,10 +100,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    let currentInterval = '1h';
+
+    // Interval Selector Logic
+    const intervalBtns = document.querySelectorAll('.interval-btn');
+    intervalBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Update UI
+            intervalBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Update State & Fetch
+            currentInterval = btn.getAttribute('data-interval');
+            fetchData(currentSymbol, currentInterval);
+        });
+    });
+
     // Fetch Data
-    async function fetchData(symbol) {
+    async function fetchData(symbol, interval = '1h') {
         try {
-            const response = await fetch(`api/market_data.php?symbol=${symbol}`);
+            const response = await fetch(`api/market_data.php?symbol=${symbol}&interval=${interval}`);
             const data = await response.json();
             console.log("Fetched Data:", data); // Debug Log
 
@@ -216,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const query = searchInput.value.toUpperCase().trim();
         if (query) {
             currentSymbol = query;
-            fetchData(currentSymbol);
+            fetchData(currentSymbol, currentInterval);
         }
     }
 
@@ -260,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 // If on chart page, update chart. If on dashboard, redirect.
                                 if (window.location.pathname.includes('chart.php')) {
                                     currentSymbol = symbol;
-                                    fetchData(currentSymbol);
+                                    fetchData(currentSymbol, currentInterval);
                                 } else {
                                     window.location.href = `chart.php?symbol=${symbol}`;
                                 }
@@ -282,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         searchWidget.classList.add('hidden');
                         if (window.location.pathname.includes('chart.php')) {
                             currentSymbol = query;
-                            fetchData(currentSymbol);
+                            fetchData(currentSymbol, currentInterval);
                         } else {
                             window.location.href = `chart.php?symbol=${query}`;
                         }
@@ -326,20 +342,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             trades.forEach(trade => {
                 const tr = document.createElement('tr');
-                tr.className = 'border-b border-[var(--border-color)] hover:bg-[var(--hover-bg)]';
+                tr.className = 'hover:bg-[var(--hover-bg)] cursor-pointer transition-colors';
 
                 const pnl = parseFloat(trade.pnl || 0);
-                const pnlClass = pnl >= 0 ? 'text-green-600' : 'text-red-600';
-                const pnlText = trade.status === 'CLOSED' ? `$${pnl.toFixed(2)}` : '--';
+                const isBuy = trade.type === 'BUY'; // Assuming 'type' exists or inferring
+                const priceClass = isBuy ? 'text-[var(--success-color)]' : 'text-[var(--danger-color)]';
+
+                // Randomize amount for demo if not present
+                const amount = (Math.random() * 0.5).toFixed(4);
+                const timeStr = new Date(trade.entry_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
                 tr.innerHTML = `
-                    <td class="py-3 px-4">${new Date(trade.entry_time).toLocaleString()}</td>
-                    <td class="py-3 px-4 font-medium">${trade.symbol}</td>
-                    <td class="py-3 px-4"><span class="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">BUY</span></td>
-                    <td class="py-3 px-4">$${parseFloat(trade.entry_price).toFixed(4)}</td>
-                    <td class="py-3 px-4">${trade.exit_price ? '$' + parseFloat(trade.exit_price).toFixed(4) : '--'}</td>
-                    <td class="py-3 px-4 ${pnlClass} font-medium">${pnlText}</td>
-                    <td class="py-3 px-4"><span class="px-2 py-1 rounded text-xs font-medium ${trade.status === 'OPEN' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">${trade.status}</span></td>
+                    <td class="py-1.5 px-4 ${priceClass} font-medium">${parseFloat(trade.entry_price).toFixed(2)}</td>
+                    <td class="py-1.5 px-4 text-right text-[var(--text-color)]">${amount}</td>
+                    <td class="py-1.5 px-4 text-right text-[var(--text-secondary)]">${timeStr}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -350,12 +366,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial Load
     initChart();
-    fetchData(currentSymbol);
+    fetchData(currentSymbol, currentInterval);
     fetchTrades();
 
     // Auto refresh every 60s
     setInterval(() => {
-        fetchData(currentSymbol);
+        fetchData(currentSymbol, currentInterval);
         fetchTrades();
     }, 60000);
 });

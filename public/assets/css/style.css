@@ -1,213 +1,174 @@
+/* Bitget x Google Theme */
 :root {
-    --bg-color: #ffffff;
-    --text-color: #202124;
+    /* Light Mode (Google Clean) */
+    --bg-color: #f0f2f5;
     --card-bg: #ffffff;
-    --border-color: #dfe1e5;
-    --accent-color: #1a73e8;
-    --hover-bg: #f8f9fa;
-    --shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
+    --text-color: #1e2329;
+    --text-secondary: #707a8a;
+    --border-color: #eaecef;
+    --accent-color: #2196f3;
+    /* Google Blue */
+    --success-color: #0ecb81;
+    /* Bitget Green */
+    --danger-color: #f6465d;
+    /* Bitget Red */
+    --hover-bg: #f5f5f5;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    --font-family: 'Inter', 'Roboto', sans-serif;
 }
 
 [data-theme="dark"] {
-    --bg-color: #202124;
-    --text-color: #e8eaed;
-    --card-bg: #303134;
-    --border-color: #5f6368;
-    --accent-color: #8ab4f8;
-    --hover-bg: #3c4043;
-    --shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+    /* Dark Mode (Bitget Sleek) */
+    --bg-color: #101014;
+    /* Deep Dark */
+    --card-bg: #1e1e24;
+    /* Card Dark */
+    --text-color: #eaecef;
+    --text-secondary: #848e9c;
+    --border-color: #2b2f36;
+    --accent-color: #2196f3;
+    --success-color: #0ecb81;
+    --danger-color: #f6465d;
+    --hover-bg: #2a2a30;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 body {
     background-color: var(--bg-color);
     color: var(--text-color);
-    font-family: 'Google Sans', Roboto, Arial, sans-serif;
+    font-family: var(--font-family);
     transition: background-color 0.3s, color 0.3s;
+    -webkit-font-smoothing: antialiased;
 }
 
-.google-card {
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+/* Cards */
+.glass-card {
     background-color: var(--card-bg);
     border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.glass-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: var(--accent-color);
+    color: white;
+    font-weight: 500;
     border-radius: 8px;
-    box-shadow: none;
-    transition: box-shadow 0.2s;
-    position: relative;
-    overflow: hidden;
+    padding: 8px 16px;
+    transition: opacity 0.2s;
 }
 
-.google-card:hover {
-    box-shadow: var(--shadow);
+.btn-primary:hover {
+    opacity: 0.9;
 }
 
-.search-bar {
-    background-color: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 24px;
-    height: 48px;
-    transition: box-shadow 0.2s, background-color 0.2s;
+.btn-ghost {
+    background-color: transparent;
+    color: var(--text-secondary);
+    font-weight: 500;
+    border-radius: 8px;
+    padding: 8px 16px;
+    transition: color 0.2s, background-color 0.2s;
 }
 
-.search-bar:hover,
-.search-bar:focus-within {
-    box-shadow: var(--shadow);
-    background-color: var(--card-bg);
-}
-
-.search-input {
-    background: transparent;
-    border: none;
+.btn-ghost:hover {
     color: var(--text-color);
-    outline: none;
-}
-
-.theme-toggle {
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 50%;
-    transition: background-color 0.2s;
-}
-
-.theme-toggle:hover {
     background-color: var(--hover-bg);
 }
 
-/* Chart Container */
-#chart-container {
-    position: relative;
-    width: 100%;
-    height: 400px;
-    overflow: hidden;
-    border-radius: 0 0 8px 8px;
+/* Interval Selector */
+.interval-btn {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s;
 }
 
-.prediction-badge {
-    background-color: #fce8e6;
-    color: #c5221f;
+.interval-btn:hover {
+    color: var(--text-color);
+    background-color: var(--hover-bg);
+}
 
-    :root {
-        --bg-color: #ffffff;
-        --text-color: #202124;
-        --card-bg: #ffffff;
-        --border-color: #dfe1e5;
-        --accent-color: #1a73e8;
-        --hover-bg: #f8f9fa;
-        --shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
-    }
+.interval-btn.active {
+    color: var(--text-color);
+    background-color: var(--hover-bg);
+    /* Subtle active state like TradingView */
+    color: var(--accent-color);
+}
 
-    [data-theme="dark"] {
-        --bg-color: #202124;
-        --text-color: #e8eaed;
-        --card-bg: #303134;
-        --border-color: #5f6368;
-        --accent-color: #8ab4f8;
-        --hover-bg: #3c4043;
-        --shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
-    }
+/* Search Bar */
+.search-container {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+}
 
-    body {
-        background-color: var(--bg-color);
-        color: var(--text-color);
-        font-family: 'Google Sans', Roboto, Arial, sans-serif;
-        transition: background-color 0.3s, color 0.3s;
-    }
+.search-input {
+    width: 100%;
+    background-color: var(--hover-bg);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 10px 16px 10px 40px;
+    color: var(--text-color);
+    font-size: 0.95rem;
+    transition: border-color 0.2s, background-color 0.2s;
+}
 
-    .google-card {
-        background-color: var(--card-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        box-shadow: none;
-        transition: box-shadow 0.2s;
-        position: relative;
-        overflow: hidden;
-    }
+.search-input:focus {
+    background-color: var(--card-bg);
+    border-color: var(--accent-color);
+    outline: none;
+}
 
-    .google-card:hover {
-        box-shadow: var(--shadow);
-    }
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+}
 
-    .search-bar {
-        background-color: var(--card-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 24px;
-        height: 48px;
-        transition: box-shadow 0.2s, background-color 0.2s;
-    }
+/* Chart */
+#chart-container {
+    border-radius: 0 0 12px 12px;
+    overflow: hidden;
+}
 
-    .search-bar:hover,
-    .search-bar:focus-within {
-        box-shadow: var(--shadow);
-        background-color: var(--card-bg);
-    }
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
 
-    .search-input {
-        background: transparent;
-        border: none;
-        color: var(--text-color);
-        outline: none;
-    }
+::-webkit-scrollbar-track {
+    background: var(--bg-color);
+}
 
-    .theme-toggle {
-        cursor: pointer;
-        padding: 8px;
-        border-radius: 50%;
-        transition: background-color 0.2s;
-    }
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
 
-    .theme-toggle:hover {
-        background-color: var(--hover-bg);
-    }
-
-    /* Chart Container */
-    #chart-container {
-        position: relative;
-        width: 100%;
-        height: 400px;
-        overflow: hidden;
-        border-radius: 0 0 8px 8px;
-    }
-
-    .prediction-badge {
-        background-color: #fce8e6;
-        color: #c5221f;
-        font-size: 12px;
-        font-weight: 500;
-        padding: 2px 8px;
-        border-radius: 12px;
-    }
-
-    [data-theme="dark"] .prediction-badge {
-        background-color: #410e0b;
-        color: #f28b82;
-    }
-
-    /* Search Widget */
-    #search-widget {
-        z-index: 1000;
-        max-height: 300px;
-        overflow-y: auto;
-    }
-
-    .search-item {
-        padding: 12px 16px;
-        cursor: pointer;
-        transition: background-color 0.2s;
-        border-bottom: 1px solid var(--border-color);
-    }
-
-    .search-item:last-child {
-        border-bottom: none;
-    }
-
-    .search-item:hover {
-        background-color: var(--hover-bg);
-    }
-
-    .search-item .symbol {
-        font-weight: 500;
-        color: var(--text-color);
-    }
-
-    .search-item .name {
-        font-size: 0.85em;
-        color: #5f6368;
-    }
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}

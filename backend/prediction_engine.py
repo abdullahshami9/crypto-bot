@@ -17,7 +17,7 @@ def generate_prediction(symbol):
         FROM historical_candles 
         WHERE symbol = '{symbol}' 
         ORDER BY close_time DESC 
-        LIMIT 50
+        LIMIT 100
     """
     
     import warnings

@@ -144,6 +144,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Track last update time to prevent stale data
+    let lastUpdateTime = 0;
+
     // WebSocket Connection
     function connectWebSocket(symbol, interval) {
         if (ws) ws.close();
@@ -160,8 +163,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const message = JSON.parse(event.data);
             const kline = message.k;
 
+            const candleTime = Math.floor(kline.t / 1000);
+
+            // Only update if this is newer than or equal to our last update
+            if (candleTime < lastUpdateTime) {
+                return; // Skip stale data
+            }
+
             const candle = {
-                time: kline.t / 1000,
+                time: candleTime,
                 open: parseFloat(kline.o),
                 high: parseFloat(kline.h),
                 low: parseFloat(kline.l),
@@ -169,7 +179,12 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             if (candleSeries) {
-                candleSeries.update(candle);
+                try {
+                    candleSeries.update(candle);
+                    lastUpdateTime = candleTime;
+                } catch (error) {
+                    console.warn('Chart update skipped:', error.message);
+                }
             }
 
             // Update Header Price
@@ -207,6 +222,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update Chart Data
             if (candleSeries && data.candles) {
                 candleSeries.setData(data.candles);
+
+                // Update last update time to the most recent candle
+                if (data.candles.length > 0) {
+                    const lastCandle = data.candles[data.candles.length - 1];
+                    lastUpdateTime = lastCandle.time;
+                }
 
                 // Update Prediction Series
                 if (data.prediction) {
@@ -402,13 +423,12 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchData(currentSymbol, currentInterval);
     fetchWatchlist();
 
-    // Poll for prediction updates every 15s (Dynamic updates)
+    // Poll for watchlist updates every 30s (WebSocket handles price updates)
     setInterval(() => {
         // Only fetch if tab is visible to save resources
         if (!document.hidden) {
-            fetchData(currentSymbol, currentInterval);
-            fetchWatchlist(); // Update watchlist too
+            fetchWatchlist(); // Update watchlist only
         }
-    }, 15000);
+    }, 30000);
 
 });

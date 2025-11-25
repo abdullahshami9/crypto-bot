@@ -1,39 +1,50 @@
 import mysql.connector
-from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
+from db_utils import get_db_connection
 
-def apply_schema_updates():
+def apply_migration():
+    conn = get_db_connection()
+    if not conn:
+        print("Failed to connect to DB")
+        return
+
+    cursor = conn.cursor()
+    
+    # 1. Create predictions table if not exists
+    sql_create = """
+    CREATE TABLE IF NOT EXISTS predictions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        symbol VARCHAR(20),
+        `interval` VARCHAR(5) DEFAULT '1h',
+        prediction_time TIMESTAMP,
+        predicted_open DECIMAL(20, 8),
+        predicted_high DECIMAL(20, 8),
+        predicted_low DECIMAL(20, 8),
+        predicted_close DECIMAL(20, 8),
+        confidence_score DECIMAL(5, 2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (symbol) REFERENCES coins(symbol)
+    );
+    """
     try:
-        conn = mysql.connector.connect(
-            host=DB_HOST,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            database=DB_NAME
-        )
-        cursor = conn.cursor()
-        
-        # Create predictions table
-        create_predictions_table = """
-        CREATE TABLE IF NOT EXISTS predictions (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            symbol VARCHAR(20),
-            prediction_time TIMESTAMP, -- The time for which the prediction is made (future)
-            predicted_open DECIMAL(20, 8),
-            predicted_high DECIMAL(20, 8),
-            predicted_low DECIMAL(20, 8),
-            predicted_close DECIMAL(20, 8),
-            confidence_score DECIMAL(5, 2),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (symbol) REFERENCES coins(symbol)
-        );
-        """
-        cursor.execute(create_predictions_table)
-        print("Table 'predictions' checked/created.")
-        
-        conn.commit()
-        conn.close()
-        
-    except mysql.connector.Error as err:
-        print(f"Error applying schema updates: {err}")
+        cursor.execute(sql_create)
+        print("Checked/Created predictions table.")
+    except Exception as e:
+        print(f"Error creating table: {e}")
+
+    # 2. Add interval column if it doesn't exist
+    try:
+        cursor.execute("SHOW COLUMNS FROM predictions LIKE 'interval'")
+        result = cursor.fetchone()
+        if not result:
+            print("Adding 'interval' column to predictions table...")
+            cursor.execute("ALTER TABLE predictions ADD COLUMN `interval` VARCHAR(5) DEFAULT '1h' AFTER symbol")
+        else:
+            print("'interval' column already exists.")
+    except Exception as e:
+        print(f"Error altering table: {e}")
+
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
-    apply_schema_updates()
+    apply_migration()

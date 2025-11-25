@@ -1,22 +1,20 @@
 import pandas as pd
 import warnings
 warnings.filterwarnings('ignore')
-# import pandas_ta as ta
 from db_utils import get_db_connection
 from datetime import datetime, timedelta
-import random
 
-def generate_prediction(symbol):
+def generate_prediction(symbol, interval="1h"):
     conn = get_db_connection()
     if not conn:
         return None
 
     # Helper to get dataframe for an interval
-    def get_data(interval, limit=50):
+    def get_data(tf, limit=50):
         query = f"""
             SELECT close_time, open, high, low, close, volume 
             FROM historical_candles 
-            WHERE symbol = '{symbol}' AND `interval` = '{interval}'
+            WHERE symbol = '{symbol}' AND `interval` = '{tf}'
             ORDER BY close_time DESC 
             LIMIT {limit}
         """
@@ -25,88 +23,67 @@ def generate_prediction(symbol):
             if not df.empty:
                 return df.sort_values('close_time')
         except Exception as e:
-            print(f"Error reading {interval} data: {e}")
+            print(f"Error reading {tf} data: {e}")
         return pd.DataFrame()
 
-    # Fetch data for multiple timeframes
-    df_15m = get_data('15m')
-    df_1h = get_data('1h')
-    df_4h = get_data('4h')
-    df_1d = get_data('1d')
+    # Fetch data for the requested interval
+    df = get_data(interval)
     
-    if df_15m.empty:
+    if df.empty:
         conn.close()
         return None
 
     # --- Analysis Logic ---
+    # Simple logic for now, can be enhanced
     
-    # 1. Long-Term Trend (Daily/4H) - Sets the Bias
+    last_close = df.iloc[-1]['close']
+    
+    # Calculate simple moving averages
+    sma_short = df['close'].rolling(window=5).mean().iloc[-1]
+    sma_long = df['close'].rolling(window=20).mean().iloc[-1]
+    
+    # Determine bias
     bias_score = 0
-    if not df_1d.empty:
-        sma_20_d = df_1d['close'].rolling(window=20).mean().iloc[-1]
-        last_close_d = df_1d.iloc[-1]['close']
-        if last_close_d > sma_20_d:
-            bias_score += 20 # Bullish Bias
-        else:
-            bias_score -= 20 # Bearish Bias
-            
-    if not df_4h.empty:
-        sma_20_4h = df_4h['close'].rolling(window=20).mean().iloc[-1]
-        last_close_4h = df_4h.iloc[-1]['close']
-        if last_close_4h > sma_20_4h:
-            bias_score += 10
-        else:
-            bias_score -= 10
-
-    # 2. Medium-Term Momentum (1H)
-    momentum_score = 0
-    if not df_1h.empty:
-        # RSI-like logic (simplified)
-        delta = df_1h['close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean().iloc[-1]
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean().iloc[-1]
-        rs = gain / loss if loss != 0 else 0
-        rsi = 100 - (100 / (1 + rs))
-        
-        if rsi < 30:
-            momentum_score += 15 # Oversold -> Buy
-        elif rsi > 70:
-            momentum_score -= 15 # Overbought -> Sell
-        
-        # Trend Confirmation
-        sma_short_1h = df_1h['close'].rolling(window=5).mean().iloc[-1]
-        sma_long_1h = df_1h['close'].rolling(window=20).mean().iloc[-1]
-        if sma_short_1h > sma_long_1h:
-            momentum_score += 10
-        else:
-            momentum_score -= 10
-
-    # 3. Short-Term Entry (15m)
-    entry_score = 0
-    last_close = df_15m.iloc[-1]['close']
-    volatility = (df_15m['high'] - df_15m['low']).mean()
-    
-    sma_short_15m = df_15m['close'].rolling(window=5).mean().iloc[-1]
-    sma_long_15m = df_15m['close'].rolling(window=20).mean().iloc[-1]
-    
-    if sma_short_15m > sma_long_15m:
-        entry_score += 15
+    if sma_short > sma_long:
+        bias_score += 30 # Increased weight
     else:
-        entry_score -= 15
+        bias_score -= 30
+        
+    # RSI-like logic
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean().iloc[-1]
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean().iloc[-1]
+    rs = gain / loss if loss != 0 else 0
+    rsi = 100 - (100 / (1 + rs))
+    
+    if rsi < 30:
+        bias_score += 20 # Increased weight
+    elif rsi > 70:
+        bias_score -= 20
+        
+    # Volume Trend
+    vol_sma = df['volume'].rolling(window=20).mean().iloc[-1]
+    current_vol = df['volume'].iloc[-1]
+    if current_vol > (vol_sma * 1.2):
+        # High volume confirms the trend
+        if df['close'].iloc[-1] > df['open'].iloc[-1]:
+             bias_score += 10
+        else:
+             bias_score -= 10
 
-    # Total Score Calculation
-    total_score = bias_score + momentum_score + entry_score
+    # Total Score
+    total_score = bias_score
     
-    # Normalize to Confidence (0-100)
-    # Score range approx -70 to +70
-    confidence = 50 + (total_score / 1.4) 
-    confidence = min(max(confidence, 10), 95)
+    # Confidence
+    # Base 50. Max score is 60 (30+20+10). 50 + 60 = 110.
+    confidence = 50 + abs(total_score)
+    confidence = min(max(confidence, 10), 100)
     
-    # Determine Direction
+    # Direction
     direction = 1 if total_score > 0 else -1
     
-    # Predict Target
-    # Volatility-based target
+    # Volatility for target
+    volatility = (df['high'] - df['low']).mean()
     target_move = volatility * (confidence / 50) * direction
     
     pred_open = last_close
@@ -114,22 +91,22 @@ def generate_prediction(symbol):
     pred_high = max(pred_open, pred_close) + (volatility * 0.3)
     pred_low = min(pred_open, pred_close) - (volatility * 0.3)
     
-    # Win Rate Bonus (from learning)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) as total, SUM(CASE WHEN reward_score > 0 THEN 1 ELSE 0 END) as wins FROM trade_learning")
-    stats = cursor.fetchone()
-    if stats and stats[0] > 0:
-        win_rate = stats[1] / stats[0]
-        # Adjust confidence slightly based on bot's past performance
-        confidence += (win_rate - 0.5) * 10 
-        confidence = min(max(confidence, 10), 95)
-
-    prediction_time = datetime.now() + timedelta(minutes=15)
+    # Prediction Time
+    # Calculate based on interval
+    interval_minutes = 60
+    if interval == '15m': interval_minutes = 15
+    elif interval == '4h': interval_minutes = 240
+    elif interval == '1d': interval_minutes = 1440
+    elif interval == '1w': interval_minutes = 10080
+    elif interval == '1M': interval_minutes = 43200
+    
+    prediction_time = datetime.now() + timedelta(minutes=interval_minutes)
     
     conn.close()
     
     return {
         "symbol": symbol,
+        "interval": interval,
         "prediction_time": prediction_time,
         "open": pred_open,
         "high": pred_high,
@@ -145,11 +122,12 @@ def save_prediction(pred_data):
 
     cursor = conn.cursor()
     sql = """
-    INSERT INTO predictions (symbol, prediction_time, predicted_open, predicted_high, predicted_low, predicted_close, confidence_score)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    INSERT INTO predictions (symbol, `interval`, prediction_time, predicted_open, predicted_high, predicted_low, predicted_close, confidence_score)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """
     val = (
         pred_data['symbol'], 
+        pred_data['interval'],
         pred_data['prediction_time'], 
         pred_data['open'], 
         pred_data['high'], 
@@ -161,19 +139,21 @@ def save_prediction(pred_data):
     try:
         cursor.execute(sql, val)
         conn.commit()
-        print(f"Prediction saved for {pred_data['symbol']}")
+        print(f"Prediction saved for {pred_data['symbol']} ({pred_data['interval']})")
     except Exception as e:
         print(f"Error saving prediction: {e}")
         
     conn.close()
 
 if __name__ == "__main__":
-    # Test
+    intervals = ["15m", "1h", "4h", "1d", "1M"]
     symbol = "BTCUSDT"
-    print(f"Generating prediction for {symbol}...")
-    prediction = generate_prediction(symbol)
-    if prediction:
-        print(f"Prediction: {prediction}")
-        save_prediction(prediction)
-    else:
-        print("Failed to generate prediction.")
+    
+    for interval in intervals:
+        print(f"Generating prediction for {symbol} {interval}...")
+        prediction = generate_prediction(symbol, interval)
+        if prediction:
+            save_prediction(prediction)
+        else:
+            print(f"Failed to generate prediction for {interval}.")
+

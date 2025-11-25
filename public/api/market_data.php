@@ -139,8 +139,9 @@ if ($is_stale) {
 }
 
 // Fetch Latest Prediction (Future)
-$stmt_pred = $pdo->prepare("SELECT prediction_time, predicted_open as open, predicted_high as high, predicted_low as low, predicted_close as close, confidence_score FROM predictions WHERE symbol = ? AND prediction_time > NOW() ORDER BY created_at DESC LIMIT 1");
-$stmt_pred->execute([$symbol]);
+// Fetch Latest Prediction (Future)
+$stmt_pred = $pdo->prepare("SELECT prediction_time, predicted_open as open, predicted_high as high, predicted_low as low, predicted_close as close, confidence_score FROM predictions WHERE symbol = ? AND `interval` = ? AND prediction_time > NOW() ORDER BY created_at DESC LIMIT 1");
+$stmt_pred->execute([$symbol, $interval]);
 $prediction = $stmt_pred->fetch();
 
 // Mock Prediction if missing

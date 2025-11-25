@@ -67,3 +67,16 @@ CREATE TABLE IF NOT EXISTS trade_learning (
     learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (trade_id) REFERENCES trades(id)
 );
+CREATE TABLE IF NOT EXISTS predictions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    symbol VARCHAR(20),
+    `interval` VARCHAR(5) DEFAULT '1h',
+    prediction_time TIMESTAMP,
+    predicted_open DECIMAL(20, 8),
+    predicted_high DECIMAL(20, 8),
+    predicted_low DECIMAL(20, 8),
+    predicted_close DECIMAL(20, 8),
+    confidence_score DECIMAL(5, 2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (symbol) REFERENCES coins(symbol)
+);

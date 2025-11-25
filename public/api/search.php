@@ -29,7 +29,7 @@ try {
     exit;
 }
 
-$query = $_GET['q'] ?? '';
+$query = $_GET['q'] ? $_GET['q'] : '';
 if (strlen($query) < 1) {
     echo json_encode([]);
     exit;

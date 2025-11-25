@@ -11,6 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let candleSeries;
     let predictionSeries;
     let currentSymbol = 'BTCUSDT';
+    let currentInterval = '1h';
+    let ws = null; // WebSocket connection
 
     // Theme Toggle
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -100,28 +102,78 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    let currentInterval = '1h';
-
     // Interval Selector Logic
     const intervalBtns = document.querySelectorAll('.interval-btn');
     intervalBtns.forEach(btn => {
         btn.addEventListener('click', () => {
+            const newInterval = btn.getAttribute('data-interval');
+            console.log(`Switching interval to: ${newInterval}`);
+
+            if (newInterval === currentInterval) return;
+
             // Update UI
             intervalBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
             // Update State & Fetch
-            currentInterval = btn.getAttribute('data-interval');
+            currentInterval = newInterval;
             fetchData(currentSymbol, currentInterval);
         });
     });
 
-    // Fetch Data
+    // WebSocket Connection
+    function connectWebSocket(symbol, interval) {
+        if (ws) {
+            ws.close();
+        }
+
+        const wsSymbol = symbol.toLowerCase();
+        const wsUrl = `wss://stream.binance.com:9443/ws/${wsSymbol}@kline_${interval}`;
+
+        console.log(`Connecting to WebSocket: ${wsUrl}`);
+        ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            const kline = message.k;
+
+            const candle = {
+                time: kline.t / 1000,
+                open: parseFloat(kline.o),
+                high: parseFloat(kline.h),
+                low: parseFloat(kline.l),
+                close: parseFloat(kline.c),
+            };
+
+            if (candleSeries) {
+                candleSeries.update(candle);
+            }
+
+            // Update Header Price
+            const price = candle.close;
+            const precision = price < 1.0 ? 8 : 2;
+            if (currentPriceEl) currentPriceEl.textContent = `$${price.toFixed(precision)}`;
+
+            // Note: We can't easily calculate change vs prev candle here without state, 
+            // but the chart updates visually.
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket Error:", error);
+        };
+    }
+
+    // Fetch Data (Initial Load)
     async function fetchData(symbol, interval = '1h') {
         try {
+            console.log(`Fetching initial data for ${symbol} ${interval}`);
+
+            // Close existing WS while fetching
+            if (ws) ws.close();
+
             const response = await fetch(`api/market_data.php?symbol=${symbol}&interval=${interval}`);
             const data = await response.json();
-            console.log("Fetched Data:", data); // Debug Log
+            console.log("Fetched Data:", data);
 
             if (data.error) {
                 console.error(data.error);
@@ -129,41 +181,40 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Update Header
-            if (cryptoTitle) cryptoTitle.textContent = `${data.symbol} Market Analysis`;
+            if (cryptoTitle) cryptoTitle.innerHTML = `${data.symbol} <span class="text-xs font-normal text-[var(--text-secondary)] px-1.5 py-0.5 rounded bg-[var(--hover-bg)]">${interval.toUpperCase()}</span>`;
+
+            if (!data.candles || data.candles.length === 0) {
+                console.warn("No candles returned");
+                return;
+            }
+
             const lastCandle = data.candles[data.candles.length - 1];
 
-            // Dynamic Precision for Low-Value Coins (e.g. PEPE)
+            // Dynamic Precision
             const price = lastCandle.close;
             const precision = price < 1.0 ? 8 : 2;
             const minMove = price < 1.0 ? 0.00000001 : 0.01;
 
             if (currentPriceEl) currentPriceEl.textContent = `$${price.toFixed(precision)}`;
 
-            // Calculate change (simple vs prev candle)
-            const prevCandle = data.candles[data.candles.length - 2];
-            const change = lastCandle.close - prevCandle.close;
-            const changePercent = (change / prevCandle.close) * 100;
-            if (priceChangeEl) {
-                priceChangeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(precision)} (${changePercent.toFixed(2)}%)`;
-                priceChangeEl.className = change >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium';
+            // Calculate change
+            if (data.candles.length > 1) {
+                const prevCandle = data.candles[data.candles.length - 2];
+                const change = lastCandle.close - prevCandle.close;
+                const changePercent = (change / prevCandle.close) * 100;
+                if (priceChangeEl) {
+                    priceChangeEl.textContent = `${change >= 0 ? '+' : ''}${change.toFixed(precision)} (${changePercent.toFixed(2)}%)`;
+                    priceChangeEl.className = change >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium';
+                }
             }
 
             // Update Chart
             if (candleSeries) {
-                // Apply Dynamic Precision
                 candleSeries.applyOptions({
-                    priceFormat: {
-                        type: 'price',
-                        precision: precision,
-                        minMove: minMove,
-                    },
+                    priceFormat: { type: 'price', precision: precision, minMove: minMove },
                 });
                 predictionSeries.applyOptions({
-                    priceFormat: {
-                        type: 'price',
-                        precision: precision,
-                        minMove: minMove,
-                    },
+                    priceFormat: { type: 'price', precision: precision, minMove: minMove },
                 });
 
                 candleSeries.setData(data.candles);
@@ -184,13 +235,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     predictionSeries.setData([]);
                 }
 
-                // Past Prediction Markers (Ticks/Crosses)
+                // Past Prediction Markers
                 if (data.past_predictions) {
                     data.past_predictions.forEach(p => {
                         markers.push({
                             time: p.time,
                             position: 'aboveBar',
-                            color: p.is_correct ? '#4CAF50' : '#EF5350', // Green or Red
+                            color: p.is_correct ? '#4CAF50' : '#EF5350',
                             shape: 'circle',
                             text: p.is_correct ? '✔' : '✘',
                             size: 2
@@ -201,6 +252,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 predictionSeries.setMarkers(markers);
                 chart.timeScale().fitContent();
             }
+
+            // Start WebSocket for real-time updates
+            connectWebSocket(symbol, interval);
 
         } catch (e) {
             console.error("Error fetching data:", e);
@@ -273,7 +327,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             div.addEventListener('click', () => {
                                 searchInput.value = symbol;
                                 searchWidget.classList.add('hidden');
-                                // If on chart page, update chart. If on dashboard, redirect.
                                 if (window.location.pathname.includes('chart.php')) {
                                     currentSymbol = symbol;
                                     fetchData(currentSymbol, currentInterval);
@@ -310,7 +363,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            // Hide widget when clicking outside
             document.addEventListener('click', (e) => {
                 if (!searchInput.contains(e.target) && !searchWidget.contains(e.target)) {
                     searchWidget.classList.add('hidden');
@@ -319,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Check URL params for symbol on load (for chart.php redirect)
+    // Check URL params for symbol on load
     const urlParams = new URLSearchParams(window.location.search);
     const paramSymbol = urlParams.get('symbol');
     if (paramSymbol) {
@@ -345,10 +397,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 tr.className = 'hover:bg-[var(--hover-bg)] cursor-pointer transition-colors';
 
                 const pnl = parseFloat(trade.pnl || 0);
-                const isBuy = trade.type === 'BUY'; // Assuming 'type' exists or inferring
+                const isBuy = trade.type === 'BUY';
                 const priceClass = isBuy ? 'text-[var(--success-color)]' : 'text-[var(--danger-color)]';
 
-                // Randomize amount for demo if not present
                 const amount = (Math.random() * 0.5).toFixed(4);
                 const timeStr = new Date(trade.entry_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -369,9 +420,8 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchData(currentSymbol, currentInterval);
     fetchTrades();
 
-    // Auto refresh every 60s
+    // Auto refresh trades every 60s (Chart is now WS)
     setInterval(() => {
-        fetchData(currentSymbol, currentInterval);
         fetchTrades();
     }, 60000);
 });

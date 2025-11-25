@@ -82,6 +82,7 @@
                     <button class="interval-btn text-xs" data-interval="4h">4H</button>
                     <button class="interval-btn text-xs" data-interval="1d">1D</button>
                     <button class="interval-btn text-xs" data-interval="1w">1W</button>
+                    <button class="interval-btn text-xs" data-interval="1M">1M</button>
                 </div>
             </div>
 

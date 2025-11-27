@@ -8,13 +8,16 @@ BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker/24hr"
 BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
 
 def fetch_market_data():
-    try:
-        response = requests.get(BINANCE_TICKER_URL)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Error fetching data from Binance: {e}")
-        return []
+    retries = 3
+    for i in range(retries):
+        try:
+            response = requests.get(BINANCE_TICKER_URL, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error fetching data from Binance (Attempt {i+1}/{retries}): {e}")
+            time.sleep(2 * (i + 1)) # Exponential backoff
+    return []
 
 def fetch_historical_candles(symbol, interval="1h", limit=100):
     """
@@ -25,13 +28,16 @@ def fetch_historical_candles(symbol, interval="1h", limit=100):
         "interval": interval,
         "limit": limit
     }
-    try:
-        response = requests.get(BINANCE_KLINES_URL, params=params)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException as e:
-        print(f"Error fetching historical data for {symbol}: {e}")
-        return []
+    retries = 3
+    for i in range(retries):
+        try:
+            response = requests.get(BINANCE_KLINES_URL, params=params, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error fetching historical data for {symbol} (Attempt {i+1}/{retries}): {e}")
+            time.sleep(2 * (i + 1))
+    return []
 
 def update_market_data(data):
     conn = get_db_connection()

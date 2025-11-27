@@ -15,10 +15,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const predDirectionEl = document.getElementById('pred-direction');
     const predTimeEl = document.getElementById('pred-time');
 
-    // Order Book Elements
+    // Order Book & Trades Elements
     const obAsks = document.getElementById('orderbook-asks');
     const obBids = document.getElementById('orderbook-bids');
     const obPrice = document.getElementById('ob-price');
+
+    const tabBtnTrades = document.getElementById('tab-btn-trades');
+    const tabBtnOrderbook = document.getElementById('tab-btn-orderbook');
+    const viewTrades = document.getElementById('view-trades');
+    const viewOrderbook = document.getElementById('view-orderbook');
+    const activeTradesList = document.getElementById('active-trades-list');
+    const tradeHistoryList = document.getElementById('trade-history-list');
+    const userBalanceEl = document.getElementById('user-balance');
 
     let chart;
     let candleSeries;
@@ -42,6 +50,29 @@ document.addEventListener('DOMContentLoaded', () => {
             if (chart) {
                 applyChartTheme(newTheme);
             }
+        });
+    }
+
+    // --- Tabs Logic ---
+    if (tabBtnTrades && tabBtnOrderbook) {
+        tabBtnTrades.addEventListener('click', () => {
+            tabBtnTrades.classList.add('border-b-2', 'border-accent-blue', 'text-accent-blue');
+            tabBtnTrades.classList.remove('text-text-secondary');
+            tabBtnOrderbook.classList.remove('border-b-2', 'border-accent-blue', 'text-accent-blue');
+            tabBtnOrderbook.classList.add('text-text-secondary');
+
+            viewTrades.classList.remove('hidden');
+            viewOrderbook.classList.add('hidden');
+        });
+
+        tabBtnOrderbook.addEventListener('click', () => {
+            tabBtnOrderbook.classList.add('border-b-2', 'border-accent-blue', 'text-accent-blue');
+            tabBtnOrderbook.classList.remove('text-text-secondary');
+            tabBtnTrades.classList.remove('border-b-2', 'border-accent-blue', 'text-accent-blue');
+            tabBtnTrades.classList.add('text-text-secondary');
+
+            viewOrderbook.classList.remove('hidden');
+            viewTrades.classList.add('hidden');
         });
     }
 
@@ -390,6 +421,108 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- Trades Logic ---
+    async function fetchTrades() {
+        if (!activeTradesList || !tradeHistoryList) return;
+
+        try {
+            const response = await fetch('api/trades.php');
+            const data = await response.json();
+
+            if (data.error) return;
+
+            // Update Balance
+            if (data.portfolio && userBalanceEl) {
+                userBalanceEl.textContent = parseFloat(data.portfolio.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            // Active Trades
+            activeTradesList.innerHTML = '';
+            if (data.active && data.active.length > 0) {
+                data.active.forEach(trade => {
+                    const isLong = trade.type === 'LONG';
+                    const color = isLong ? 'text-accent-teal' : 'text-accent-red';
+                    const typeLabel = isLong ? 'LONG' : 'SHORT';
+
+                    const pnlPct = parseFloat(trade.pnl_pct);
+                    const pnlAmt = parseFloat(trade.pnl_amount);
+                    const pnlColor = pnlPct >= 0 ? 'text-accent-teal' : 'text-accent-red';
+                    const pnlSign = pnlPct >= 0 ? '+' : '';
+
+                    const div = document.createElement('div');
+                    div.className = 'p-2 rounded bg-bg border border-border flex flex-col gap-1';
+                    div.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-text-primary">${trade.symbol}</span>
+                            <span class="text-[10px] font-bold ${color}">${typeLabel}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-[10px] text-text-secondary">
+                            <span>Entry: ${parseFloat(trade.entry_price).toFixed(2)}</span>
+                            <span>Qty: ${parseFloat(trade.quantity).toFixed(4)}</span>
+                        </div>
+                        <div class="flex justify-between items-center mt-1 border-t border-border/50 pt-1">
+                            <span class="text-xs font-bold ${pnlColor}">${pnlSign}${pnlPct.toFixed(2)}% (${pnlSign}$${pnlAmt.toFixed(2)})</span>
+                            <button onclick="closeTrade(${trade.id})" class="px-2 py-0.5 text-[10px] bg-accent-red/10 text-accent-red hover:bg-accent-red hover:text-white rounded transition-colors">Close</button>
+                        </div>
+                    `;
+                    activeTradesList.appendChild(div);
+                });
+            } else {
+                activeTradesList.innerHTML = '<div class="text-xs text-text-muted text-center py-2">No active trades</div>';
+            }
+
+            // Trade History
+            tradeHistoryList.innerHTML = '';
+            if (data.history && data.history.length > 0) {
+                data.history.forEach(trade => {
+                    const pnl = parseFloat(trade.pnl);
+                    const isWin = pnl >= 0;
+                    const pnlColor = isWin ? 'text-accent-teal' : 'text-accent-red';
+                    const pnlSign = isWin ? '+' : '';
+
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center justify-between p-2 rounded hover:bg-bg-hover transition-colors border-b border-border/50';
+                    div.innerHTML = `
+                        <div class="flex flex-col">
+                            <span class="text-xs font-medium text-text-primary">${trade.symbol}</span>
+                            <span class="text-[10px] text-text-secondary">${trade.type || 'TRADE'}</span>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="text-xs font-bold ${pnlColor}">${pnlSign}${pnl.toFixed(2)}</span>
+                            <span class="text-[10px] text-text-muted">${new Date(trade.exit_time).toLocaleDateString()}</span>
+                        </div>
+                    `;
+                    tradeHistoryList.appendChild(div);
+                });
+            }
+
+        } catch (e) {
+            console.error("Error fetching trades:", e);
+        }
+    }
+
+    // Close Trade Function (Global)
+    window.closeTrade = async (tradeId) => {
+        if (!confirm('Are you sure you want to close this trade?')) return;
+
+        try {
+            const response = await fetch('api/trades.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'close', trade_id: tradeId })
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                fetchTrades(); // Refresh list
+            } else {
+                alert('Error: ' + result.error);
+            }
+        } catch (e) {
+            console.error("Error closing trade:", e);
+        }
+    };
+
     // Search Logic
     function handleSearch() {
         if (!searchInput) return;
@@ -412,9 +545,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 searchWidget.classList.add('hidden');
                 return;
             }
-
-            // Mock Suggestions for now or fetch from API
-            // ... (Search logic similar to before)
         });
     }
 
@@ -422,13 +552,21 @@ document.addEventListener('DOMContentLoaded', () => {
     initChart();
     fetchData(currentSymbol, currentInterval);
     fetchWatchlist();
+    fetchTrades();
 
-    // Poll for watchlist updates every 30s (WebSocket handles price updates)
+    // Poll for watchlist and trades updates
     setInterval(() => {
-        // Only fetch if tab is visible to save resources
         if (!document.hidden) {
-            fetchWatchlist(); // Update watchlist only
+            fetchWatchlist();
+            fetchTrades();
         }
-    }, 30000);
+    }, 2000); // Poll trades/watchlist faster (2s)
+
+    // Poll for new predictions/signals
+    setInterval(() => {
+        if (!document.hidden) {
+            fetchData(currentSymbol, currentInterval);
+        }
+    }, 10000); // Refresh chart/predictions every 10s
 
 });

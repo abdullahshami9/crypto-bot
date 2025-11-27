@@ -147,27 +147,7 @@
             <div class="p-3 border-b border-border">
                 <h3 class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Watchlist</h3>
                 <div class="space-y-1">
-                    <div class="flex items-center justify-between p-2 rounded-md bg-bg-hover cursor-pointer group">
-                        <div class="flex items-center gap-2">
-                            <img src="https://cryptologos.cc/logos/bitcoin-btc-logo.svg?v=025" class="w-5 h-5" alt="BTC">
-                            <span class="text-sm font-medium group-hover:text-accent-blue transition-colors">BTC</span>
-                        </div>
-                        <span class="text-xs text-accent-teal">+2.4%</span>
-                    </div>
-                    <div class="flex items-center justify-between p-2 rounded-md hover:bg-bg-hover cursor-pointer group">
-                        <div class="flex items-center gap-2">
-                            <img src="https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=025" class="w-5 h-5" alt="ETH">
-                            <span class="text-sm font-medium group-hover:text-accent-blue transition-colors">ETH</span>
-                        </div>
-                        <span class="text-xs text-accent-red">-0.8%</span>
-                    </div>
-                    <div class="flex items-center justify-between p-2 rounded-md hover:bg-bg-hover cursor-pointer group">
-                        <div class="flex items-center gap-2">
-                            <img src="https://cryptologos.cc/logos/solana-sol-logo.svg?v=025" class="w-5 h-5" alt="SOL">
-                            <span class="text-sm font-medium group-hover:text-accent-blue transition-colors">SOL</span>
-                        </div>
-                        <span class="text-xs text-accent-teal">+5.1%</span>
-                    </div>
+                    <!-- JS Populated -->
                 </div>
             </div>
             
@@ -271,34 +251,52 @@
         <aside class="w-72 border-l border-border bg-bg-card flex flex-col hidden lg:flex">
             <!-- Tabs -->
             <div class="flex border-b border-border">
-                <button class="flex-1 py-3 text-xs font-bold border-b-2 border-accent-blue text-accent-blue">Order Book</button>
-                <button class="flex-1 py-3 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors">Trades</button>
+                <button class="flex-1 py-3 text-xs font-bold border-b-2 border-accent-blue text-accent-blue transition-colors" id="tab-btn-trades">Trades</button>
+                <button class="flex-1 py-3 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors" id="tab-btn-orderbook">Order Book</button>
             </div>
 
-            <!-- Order Book (Simulated) -->
-            <div class="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
-                <!-- Asks -->
-                <div class="flex-1 overflow-hidden flex flex-col justify-end pb-1">
-                    <table class="w-full text-left text-[11px]">
-                        <tbody id="orderbook-asks">
-                            <!-- JS will populate -->
-                        </tbody>
-                    </table>
-                </div>
+            <!-- Content Container -->
+            <div class="flex-1 overflow-hidden relative">
                 
-                <!-- Current Price -->
-                <div class="py-2 px-4 border-y border-border bg-bg flex items-center justify-center gap-2">
-                    <span class="text-lg font-bold text-accent-teal" id="ob-price">--</span>
-                    <svg class="w-4 h-4 text-accent-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                <!-- Trades View (Active by default) -->
+                <div id="view-trades" class="absolute inset-0 flex flex-col bg-bg-card z-10">
+                    <div class="p-2 bg-bg border-b border-border">
+                        <h4 class="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">Active Positions</h4>
+                        <div id="active-trades-list" class="space-y-1">
+                            <!-- JS Populated -->
+                            <div class="text-xs text-text-muted text-center py-2">No active trades</div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+                        <h4 class="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-2 sticky top-0 bg-bg-card py-1">Trade History</h4>
+                        <div id="trade-history-list" class="space-y-2">
+                            <!-- JS Populated -->
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Bids -->
-                <div class="flex-1 overflow-hidden pt-1">
-                    <table class="w-full text-left text-[11px]">
-                        <tbody id="orderbook-bids">
-                            <!-- JS will populate -->
-                        </tbody>
-                    </table>
+                <!-- Order Book View (Hidden) -->
+                <div id="view-orderbook" class="absolute inset-0 flex flex-col bg-bg-card hidden">
+                    <!-- Asks -->
+                    <div class="flex-1 overflow-hidden flex flex-col justify-end pb-1">
+                        <table class="w-full text-left text-[11px]">
+                            <tbody id="orderbook-asks"></tbody>
+                        </table>
+                    </div>
+                    
+                    <!-- Current Price -->
+                    <div class="py-2 px-4 border-y border-border bg-bg flex items-center justify-center gap-2">
+                        <span class="text-lg font-bold text-accent-teal" id="ob-price">--</span>
+                        <svg class="w-4 h-4 text-accent-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                    </div>
+
+                    <!-- Bids -->
+                    <div class="flex-1 overflow-hidden pt-1">
+                        <table class="w-full text-left text-[11px]">
+                            <tbody id="orderbook-bids"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
 
@@ -309,7 +307,7 @@
                     <button class="text-[10px] bg-bg-hover px-2 py-0.5 rounded text-text-primary hover:bg-border transition-colors">Deposit</button>
                 </div>
                 <div class="flex items-baseline gap-1">
-                    <span class="text-lg font-bold text-text-primary">1,000.00</span>
+                    <span class="text-lg font-bold text-text-primary" id="user-balance">--</span>
                     <span class="text-xs text-text-secondary">USDT</span>
                 </div>
             </div>

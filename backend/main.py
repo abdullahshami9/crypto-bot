@@ -20,7 +20,12 @@ def main():
                 data_ingest.update_market_data(market_data)
                 
                 # Filter for top volume USDT pairs to analyze
-                usdt_pairs = [item for item in market_data if item['symbol'].endswith('USDT')]
+                # Exclude Stablecoins
+                stablecoins = ['USDCUSDT', 'FDUSDUSDT', 'TUSDUSDT', 'DAIUSDT', 'USDPUSDT', 'BUSDUSDT']
+                usdt_pairs = [
+                    item for item in market_data 
+                    if item['symbol'].endswith('USDT') and item['symbol'] not in stablecoins
+                ]
                 top_pairs = sorted(usdt_pairs, key=lambda x: float(x['quoteVolume']), reverse=True)[:20]
                 
                 # 2. Analysis & Trading
@@ -28,7 +33,7 @@ def main():
                 
                 # Get current prices for SL/TP check
                 current_prices = {item['symbol']: float(item['lastPrice']) for item in usdt_pairs}
-                trading_engine.check_stop_loss_take_profit(current_prices)
+                trading_engine.check_risk_management(current_prices)
                 
                 for item in top_pairs:
                     symbol = item['symbol']
@@ -37,7 +42,8 @@ def main():
                     data_ingest.update_historical_data(symbol)
                     
                     # Analyze
-                    signal = analysis_engine.analyze_market(symbol)
+                    current_price = current_prices.get(symbol)
+                    signal = analysis_engine.analyze_market(symbol, current_price)
                     if signal:
                         print(f"Signal for {symbol}: {signal['signal']} (Score: {signal['score']})")
                         analysis_engine.save_signal(signal)

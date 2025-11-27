@@ -38,10 +38,21 @@ def get_historical_data(symbol, limit=100):
     df[cols] = df[cols].apply(pd.to_numeric)
     return df
 
-def analyze_market(symbol):
+def analyze_market(symbol, current_price=None):
     df = get_historical_data(symbol)
     if df is None or len(df) < 30:
         return None
+
+    # Update latest candle with real-time price if provided
+    if current_price is not None:
+        # Assuming the last row is the "current" candle (forming) or the most recent closed one.
+        # We update the last close to reflect the real-time price for accurate indicator calculation.
+        df.iloc[-1, df.columns.get_loc('close')] = float(current_price)
+        # Also update high/low if current price breaks them
+        if float(current_price) > df.iloc[-1]['high']:
+            df.iloc[-1, df.columns.get_loc('high')] = float(current_price)
+        if float(current_price) < df.iloc[-1]['low']:
+            df.iloc[-1, df.columns.get_loc('low')] = float(current_price)
 
     # Calculate Indicators
     # RSI
@@ -57,20 +68,8 @@ def analyze_market(symbol):
     macd_line = exp1 - exp2
     signal_line = macd_line.ewm(span=9, adjust=False).mean()
     
-    # Add to dataframe (using same column names as before for compatibility if needed, or just using variables)
+    # Add to dataframe
     df['MACDh_12_26_9'] = macd_line - signal_line # Histogram
-    
-    # Bollinger Bands
-    sma20 = df['close'].rolling(window=20).mean()
-    std20 = df['close'].rolling(window=20).std()
-    # df['BBL_20_2.0'] = sma20 - 2 * std20
-    # df['BBU_20_2.0'] = sma20 + 2 * std20
-    # We only need to append them if we use them later, but the logic below doesn't seem to explicitly use BB columns for signal, 
-    # just RSI and MACD. The original code concatenated them.
-    # For safety, let's keep the dataframe structure clean.
-    
-    # Remove pandas_ta import at the top if not done yet
-
     
     # Get latest row
     latest = df.iloc[-1]
@@ -79,8 +78,6 @@ def analyze_market(symbol):
     signal = "HOLD"
     score = 50
     rationale = []
-    
-    # Simple Logic (Placeholder for ML)
     
     # RSI Logic
     if latest['rsi'] < 30:
@@ -99,9 +96,10 @@ def analyze_market(symbol):
         rationale.append("MACD Bearish Crossover")
         
     # Determine Signal
-    if score >= 75:
+    # Lowered thresholds for higher frequency (User Request)
+    if score >= 60:
         signal = "BUY"
-    elif score <= 25:
+    elif score <= 40:
         signal = "SELL"
         
     return {

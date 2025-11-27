@@ -1,8 +1,9 @@
 import pandas as pd
 import warnings
 warnings.filterwarnings('ignore')
-from db_utils import get_db_connection
+from db_utils import get_db_connection, log_db_error
 from datetime import datetime, timedelta
+import pandas_ta as ta
 
 def generate_prediction(symbol, interval="1h"):
     conn = get_db_connection()
@@ -10,7 +11,7 @@ def generate_prediction(symbol, interval="1h"):
         return None
 
     # Helper to get dataframe for an interval
-    def get_data(tf, limit=50):
+    def get_data(tf, limit=100):
         query = f"""
             SELECT close_time, open, high, low, close, volume 
             FROM historical_candles 
@@ -29,70 +30,125 @@ def generate_prediction(symbol, interval="1h"):
     # Fetch data for the requested interval
     df = get_data(interval)
     
-    if df.empty:
-        conn.close()
+    if df.empty or len(df) < 50:
+        if conn: conn.close()
         return None
 
-    # --- Analysis Logic ---
-    # Simple logic for now, can be enhanced
-    
-    last_close = df.iloc[-1]['close']
-    
-    # Calculate simple moving averages
-    sma_short = df['close'].rolling(window=5).mean().iloc[-1]
-    sma_long = df['close'].rolling(window=20).mean().iloc[-1]
-    
-    # Determine bias
-    bias_score = 0
-    if sma_short > sma_long:
-        bias_score += 30 # Increased weight
-    else:
-        bias_score -= 30
-        
-    # RSI-like logic
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean().iloc[-1]
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean().iloc[-1]
-    rs = gain / loss if loss != 0 else 0
-    rsi = 100 - (100 / (1 + rs))
-    
-    if rsi < 30:
-        bias_score += 20 # Increased weight
-    elif rsi > 70:
-        bias_score -= 20
-        
-    # Volume Trend
-    vol_sma = df['volume'].rolling(window=20).mean().iloc[-1]
-    current_vol = df['volume'].iloc[-1]
-    if current_vol > (vol_sma * 1.2):
-        # High volume confirms the trend
-        if df['close'].iloc[-1] > df['open'].iloc[-1]:
-             bias_score += 10
-        else:
-             bias_score -= 10
+    # --- Advanced Analysis Logic ---
 
-    # Total Score
-    total_score = bias_score
+    # Calculate Indicators
+    df.ta.rsi(length=14, append=True)
+    df.ta.macd(append=True)
+    df.ta.bbands(length=20, std=2, append=True)
+    df.ta.atr(append=True)
+    df.ta.sma(length=50, append=True)
+    df.ta.sma(length=200, append=True)
+
+    last_row = df.iloc[-1]
+    prev_row = df.iloc[-2]
     
-    # Confidence
-    # Base 50. Max score is 60 (30+20+10). 50 + 60 = 110.
-    confidence = 50 + abs(total_score)
-    confidence = min(max(confidence, 10), 100)
+    close = last_row['close']
+
+    # Dynamic Column Lookup
+    rsi_col = next((c for c in df.columns if c.startswith('RSI_')), None)
+    macd_col = next((c for c in df.columns if c.startswith('MACD_') and not c.startswith('MACDs') and not c.startswith('MACDh')), None)
+    macdsignal_col = next((c for c in df.columns if c.startswith('MACDs_')), None)
+    upper_band_col = next((c for c in df.columns if c.startswith('BBU_')), None)
+    lower_band_col = next((c for c in df.columns if c.startswith('BBL_')), None)
+    atr_col = next((c for c in df.columns if c.startswith('ATRr_') or c.startswith('ATR_')), None)
+    sma50_col = next((c for c in df.columns if c.startswith('SMA_50')), None)
+    sma200_col = next((c for c in df.columns if c.startswith('SMA_200')), None)
+
+    # Extract values safely
+    rsi = last_row[rsi_col] if rsi_col else None
+    macd = last_row[macd_col] if macd_col else None
+    macdsignal = last_row[macdsignal_col] if macdsignal_col else None
+    upper_band = last_row[upper_band_col] if upper_band_col else None
+    lower_band = last_row[lower_band_col] if lower_band_col else None
+    atr = last_row[atr_col] if atr_col else None
+    sma50 = last_row[sma50_col] if sma50_col else None
+    sma200 = last_row[sma200_col] if sma200_col else None
+
+    score = 0
+    reasons = []
+
+    # 1. Trend Analysis (SMA)
+    if sma50 is not None and sma200 is not None and pd.notna(sma50) and pd.notna(sma200):
+        if sma50 > sma200:
+            score += 10
+            reasons.append("Golden Cross / Bullish Trend (SMA50 > SMA200)")
+        elif sma50 < sma200:
+            score -= 10
+            reasons.append("Death Cross / Bearish Trend (SMA50 < SMA200)")
+
+    if sma50 is not None and pd.notna(sma50):
+        if close > sma50:
+            score += 5
+            reasons.append("Price above SMA50")
+        else:
+            score -= 5
+            reasons.append("Price below SMA50")
+
+    # 2. Momentum (RSI)
+    if rsi is not None and pd.notna(rsi):
+        if rsi < 30:
+            score += 20
+            reasons.append(f"Oversold RSI ({rsi:.2f}) - Potential Bounce")
+        elif rsi > 70:
+            score -= 20
+            reasons.append(f"Overbought RSI ({rsi:.2f}) - Potential Pullback")
+        else:
+            # Neutral but check slope
+            if rsi > prev_row[rsi_col]:
+                score += 5
+            else:
+                score -= 5
+
+    # 3. MACD
+    if macd is not None and macdsignal is not None and pd.notna(macd) and pd.notna(macdsignal):
+        if macd > macdsignal:
+            score += 15
+            reasons.append("MACD Bullish Crossover")
+        else:
+            score -= 15
+            reasons.append("MACD Bearish Crossover")
+
+    # 4. Bollinger Bands
+    if lower_band is not None and upper_band is not None and pd.notna(lower_band) and pd.notna(upper_band):
+        if close < lower_band:
+            score += 15
+            reasons.append("Price below Lower Bollinger Band - Reversion likely")
+        elif close > upper_band:
+            score -= 15
+            reasons.append("Price above Upper Bollinger Band - Reversion likely")
+
+    # 5. Volume Analysis
+    vol_sma = df['volume'].rolling(window=20).mean().iloc[-1]
+    if last_row['volume'] > vol_sma * 1.5:
+        if close > last_row['open']:
+            score += 10
+            reasons.append("High Volume Buying")
+        else:
+            score -= 10
+            reasons.append("High Volume Selling")
+
+    # Final Decision
+    confidence = 50 + abs(score)
+    confidence = min(max(confidence, 10), 95) # Cap at 95%
     
-    # Direction
-    direction = 1 if total_score > 0 else -1
+    direction = 1 if score > 0 else -1
     
-    # Volatility for target
-    volatility = (df['high'] - df['low']).mean()
-    target_move = volatility * (confidence / 50) * direction
+    # Dynamic Target Calculation based on ATR
+    atr_val = atr if (atr is not None and pd.notna(atr)) else (close * 0.02) # Fallback
+    target_move = atr_val * 2 * direction # Target is 2x ATR
     
-    pred_open = last_close
-    pred_close = last_close + target_move
-    pred_high = max(pred_open, pred_close) + (volatility * 0.3)
-    pred_low = min(pred_open, pred_close) - (volatility * 0.3)
+    pred_open = close
+    pred_close = close + target_move
+    
+    pred_high = max(pred_open, pred_close) + (atr_val * 0.5)
+    pred_low = min(pred_open, pred_close) - (atr_val * 0.5)
     
     # Prediction Time
-    # Calculate based on interval
     interval_minutes = 60
     if interval == '15m': interval_minutes = 15
     elif interval == '4h': interval_minutes = 240
@@ -101,6 +157,10 @@ def generate_prediction(symbol, interval="1h"):
     elif interval == '1M': interval_minutes = 43200
     
     prediction_time = datetime.now() + timedelta(minutes=interval_minutes)
+    
+    reasoning_text = "; ".join(reasons)
+    if not reasoning_text:
+        reasoning_text = "Neutral market conditions."
     
     conn.close()
     
@@ -112,7 +172,8 @@ def generate_prediction(symbol, interval="1h"):
         "high": pred_high,
         "low": pred_low,
         "close": pred_close,
-        "confidence": confidence
+        "confidence": confidence,
+        "reasoning": reasoning_text
     }
 
 def save_prediction(pred_data):
@@ -121,9 +182,13 @@ def save_prediction(pred_data):
         return
 
     cursor = conn.cursor()
+    
+    # Removed the inline schema check to prevent "Unread result found" error.
+    # We handle schema issues via exception handling below.
+
     sql = """
-    INSERT INTO predictions (symbol, `interval`, prediction_time, predicted_open, predicted_high, predicted_low, predicted_close, confidence_score)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    INSERT INTO predictions (symbol, `interval`, prediction_time, predicted_open, predicted_high, predicted_low, predicted_close, confidence_score, reasoning)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     val = (
         pred_data['symbol'], 
@@ -133,7 +198,8 @@ def save_prediction(pred_data):
         pred_data['high'], 
         pred_data['low'], 
         pred_data['close'], 
-        pred_data['confidence']
+        pred_data['confidence'],
+        pred_data.get('reasoning', '')
     )
     
     try:
@@ -142,7 +208,23 @@ def save_prediction(pred_data):
         print(f"Prediction saved for {pred_data['symbol']} ({pred_data['interval']})")
     except Exception as e:
         print(f"Error saving prediction: {e}")
+        # Log to generic table
+        log_db_error('prediction_engine.py', 'save_prediction', str(e), sql)
         
+        # Attempt to fix schema if it's the missing column error (1054)
+        if "Unknown column 'reasoning'" in str(e):
+            try:
+                print("Attempting to fix schema...")
+                cursor.execute("ALTER TABLE predictions ADD COLUMN reasoning TEXT")
+                conn.commit()
+                # Retry insert
+                cursor.execute(sql, val)
+                conn.commit()
+                print("Schema fixed and prediction saved.")
+            except Exception as schema_err:
+                print(f"Failed to fix schema: {schema_err}")
+                log_db_error('prediction_engine.py', 'save_prediction_schema_fix', str(schema_err), "ALTER TABLE...")
+
     conn.close()
 
 if __name__ == "__main__":
@@ -154,6 +236,6 @@ if __name__ == "__main__":
         prediction = generate_prediction(symbol, interval)
         if prediction:
             save_prediction(prediction)
+            print(f"Reasoning: {prediction['reasoning']}")
         else:
             print(f"Failed to generate prediction for {interval}.")
-

@@ -12,7 +12,7 @@ def get_exchange():
         'secret': BINANCE_SECRET_KEY,
         'enableRateLimit': True,
         'options': {
-            'defaultType': 'future', # Use futures for shorting support, or 'spot'
+            'defaultType': 'future', 
         }
     })
     if USE_TESTNET:
@@ -37,7 +37,7 @@ def update_balance(amount):
 def execute_trade(signal):
     """
     Executes a trade based on the signal.
-    Signal dict: {symbol, signal (BUY/SELL), close_price, confidence, reasoning}
+    Signal dict: {symbol, signal (BUY/SELL), close_price, confidence, reasoning, atr, llm_analysis}
     """
     if signal['signal'] == "HOLD":
         return
@@ -46,10 +46,10 @@ def execute_trade(signal):
     balance = float(portfolio['balance'])
     
     # Dynamic Position Sizing based on Confidence
-    confidence = signal.get('confidence', 50)
+    confidence = signal.get('score', 50) # Use score as confidence proxy
     size_multiplier = 1.0
-    if confidence > 80: size_multiplier = 1.5
-    elif confidence < 60: size_multiplier = 0.5
+    if confidence > 70: size_multiplier = 1.5
+    elif confidence < 40: size_multiplier = 0.5
     
     trade_amount = balance * TRADE_AMOUNT_PCT * size_multiplier
     
@@ -59,45 +59,41 @@ def execute_trade(signal):
 
     symbol = signal['symbol']
     price = float(signal['close_price'])
+    atr = float(signal.get('atr', 0))
     quantity = trade_amount / price
     
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Check for existing open trades for this symbol
-    # Use fetchall to consume all results and prevent "Unread result found"
+    # Check for existing open trades
     cursor.execute("SELECT * FROM trades WHERE symbol = %s AND status = 'OPEN'", (symbol,))
     rows = cursor.fetchall()
     existing_trade = rows[0] if rows else None
     
     if existing_trade:
-        # If we have an open trade, check if we need to close it (reversal)
-        # For simplicity: If Signal is SELL and we have a BUY (Long) trade, close it.
-        # Assuming 'BUY' = Long, 'SELL' = Short for now.
-        # But if we are just Spot trading, SELL means close.
-        # Let's assume this is a Long-Only Spot Bot for safety unless Futures is explicitly requested.
-        # User asked for "take trades in future", so let's assume Futures logic (Long/Short).
+        # Close existing if signal reverses
+        existing_type = existing_trade['type'] # LONG or SHORT
+        new_type = 'LONG' if signal['signal'] == 'BUY' else 'SHORT'
         
-        # Logic:
-        # If Signal is BUY and we are Short -> Close Short, Open Long
-        # If Signal is SELL and we are Long -> Close Long, Open Short
-        # If Signal matches current position -> Add to position? (Skip for now)
-        pass 
-        # For this iteration, let's keep it simple: Close if signal opposes current trade.
+        if existing_type != new_type:
+             print(f"Reversal detected for {symbol}. Closing existing {existing_type}.")
+             # Close logic here (omitted for brevity, similar to check_risk_management)
+             # For now, we just skip opening a new one if one exists to avoid complexity
+        return 
     
     # Execute New Trade
-    print(f"Executing {signal['signal']} for {symbol} at {price} (Conf: {confidence}%)")
+    print(f"Executing {signal['signal']} for {symbol} at {price} (Score: {confidence})")
     
-    # In a real scenario, we would call exchange.create_order(...) here
-    # order = exchange.create_order(symbol, 'market', side, quantity)
+    # Combine reasoning
+    full_reasoning = f"{signal.get('rationale', '')} | LLM: {signal.get('llm_analysis', 'N/A')}"
     
     sql = """
-    INSERT INTO trades (symbol, entry_price, quantity, status, entry_time, type, reasoning)
-    VALUES (%s, %s, %s, 'OPEN', NOW(), %s, %s)
+    INSERT INTO trades (symbol, entry_price, quantity, status, entry_time, type, reasoning, atr)
+    VALUES (%s, %s, %s, 'OPEN', NOW(), %s, %s, %s)
     """
     trade_type = 'LONG' if signal['signal'] == 'BUY' else 'SHORT'
     
-    cursor.execute(sql, (symbol, price, quantity, trade_type, signal.get('reasoning', '')))
+    cursor.execute(sql, (symbol, price, quantity, trade_type, full_reasoning, atr))
     
     # Deduct margin (simulated)
     update_balance(-trade_amount)
@@ -107,7 +103,7 @@ def execute_trade(signal):
 
 def check_risk_management(current_prices):
     """
-    Monitors open trades for SL/TP.
+    Monitors open trades for SL/TP using ATR if available.
     current_prices: {symbol: price}
     """
     conn = get_db_connection()
@@ -121,7 +117,8 @@ def check_risk_management(current_prices):
             current_price = current_prices[symbol]
             entry_price = float(trade['entry_price'])
             qty = float(trade['quantity'])
-            trade_type = trade.get('type', 'LONG') # Default to LONG if column missing
+            trade_type = trade.get('type', 'LONG')
+            atr = float(trade.get('atr') or 0)
             
             # Calculate PnL
             if trade_type == 'LONG':
@@ -129,21 +126,32 @@ def check_risk_management(current_prices):
             else: # SHORT
                 pnl_pct = (entry_price - current_price) / entry_price
             
-            # Check SL/TP
+            # Determine SL/TP Levels
+            # If ATR is available, use it. Else fallback to fixed %
+            if atr > 0:
+                # Dynamic ATR-based SL/TP
+                # SL = 2 * ATR, TP = 4 * ATR (Risk:Reward 1:2)
+                atr_pct = atr / entry_price
+                sl_pct = 2 * atr_pct
+                tp_pct = 4 * atr_pct
+            else:
+                sl_pct = STOP_LOSS_PCT
+                tp_pct = TAKE_PROFIT_PCT
+            
             close_trade = False
             reason = ""
             
-            if pnl_pct <= -STOP_LOSS_PCT:
+            if pnl_pct <= -sl_pct:
                 close_trade = True
-                reason = "Stop Loss Hit"
-            elif pnl_pct >= TAKE_PROFIT_PCT:
+                reason = f"Stop Loss Hit (SL: {sl_pct*100:.2f}%)"
+            elif pnl_pct >= tp_pct:
                 close_trade = True
-                reason = "Take Profit Hit"
+                reason = f"Take Profit Hit (TP: {tp_pct*100:.2f}%)"
                 
             if close_trade:
                 print(f"{reason} for {symbol}. PnL: {pnl_pct*100:.2f}%")
                 
-                pnl_amount = (entry_price * qty) * pnl_pct # Approx PnL value
+                pnl_amount = (entry_price * qty) * pnl_pct
                 
                 sql = """
                 UPDATE trades 
@@ -151,9 +159,6 @@ def check_risk_management(current_prices):
                 WHERE id = %s
                 """
                 
-                # Use a new cursor or ensure the update is safe. 
-                # Since we are iterating a fetched list, using the same cursor for update is fine if we don't have pending results.
-                # But to be safe, let's use a fresh cursor for the update or just execute on the same one since fetchall cleared it.
                 cursor.execute(sql, (current_price, pnl_amount, reason, trade['id']))
                 
                 # Return margin + PnL

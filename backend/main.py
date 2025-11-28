@@ -58,7 +58,7 @@ def main():
                         
             # 3. Learning
             print("[3] Learning...")
-            learning_engine.review_trades()
+            learning_engine.analyze_performance()
             
             print("Cycle complete. Sleeping for 60s...")
             time.sleep(60)

@@ -1,6 +1,8 @@
 <?php
 header('Content-Type: application/json');
-require_once '../includes/db.php';
+error_reporting(0);
+ini_set('display_errors', 0);
+require_once '../../includes/db.php';
 
 // Handle POST request to close a trade
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -25,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Calculate PnL
                 $entryPrice = $trade['entry_price'];
                 $quantity = $trade['quantity'];
-                $type = $trade['type'] ?? 'LONG';
+                $type = isset($trade['type']) ? $trade['type'] : 'LONG';
                 
                 if ($type === 'LONG') {
                     $pnlPct = ($currentPrice - $entryPrice) / $entryPrice;
@@ -62,19 +64,23 @@ try {
     $activeTrades = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     // Calculate PnL for Active Trades
-    foreach ($activeTrades as &$trade) {
-        $currentPrice = $trade['current_price'] ?? $trade['entry_price'];
-        $entryPrice = $trade['entry_price'];
-        $type = $trade['type'] ?? 'LONG';
-        
-        if ($type === 'LONG') {
-            $pnlPct = ($currentPrice - $entryPrice) / $entryPrice;
-        } else {
-            $pnlPct = ($entryPrice - $currentPrice) / $entryPrice;
+    if ($activeTrades) {
+        foreach ($activeTrades as &$trade) {
+            $currentPrice = isset($trade['current_price']) ? $trade['current_price'] : $trade['entry_price'];
+            $entryPrice = $trade['entry_price'];
+            $type = isset($trade['type']) ? $trade['type'] : 'LONG';
+            
+            if ($type === 'LONG') {
+                $pnlPct = ($currentPrice - $entryPrice) / $entryPrice;
+            } else {
+                $pnlPct = ($entryPrice - $currentPrice) / $entryPrice;
+            }
+            
+            $trade['pnl_pct'] = $pnlPct * 100;
+            $trade['pnl_amount'] = ($entryPrice * $trade['quantity']) * $pnlPct;
         }
-        
-        $trade['pnl_pct'] = $pnlPct * 100;
-        $trade['pnl_amount'] = ($entryPrice * $trade['quantity']) * $pnlPct;
+    } else {
+        $activeTrades = [];
     }
 
     // Fetch Closed Trades (Limit 50)

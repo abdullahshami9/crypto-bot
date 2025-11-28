@@ -10,6 +10,8 @@ DB_NAME = 'crypto_engine'
 # Use environment variables or set directly here (be careful with real keys)
 BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', '')
 BINANCE_SECRET_KEY = os.getenv('BINANCE_SECRET_KEY', '')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'AIzaSyDcSWdTJTCBFc0n9bONomLHOWJer2Xl3CQ') # User must provide this
+LLM_MODEL = 'gemini-pro'
 USE_TESTNET = True # Set to False for real trading
 
 # Trading Configuration

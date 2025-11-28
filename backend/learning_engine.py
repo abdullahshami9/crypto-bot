@@ -1,64 +1,61 @@
-from db_utils import get_db_connection
 import json
+import os
+from db_utils import get_db_connection
 
-def review_trades():
+# Configuration File for Dynamic Parameters
+CONFIG_FILE = 'trading_config.json'
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, 'r') as f:
+            return json.load(f)
+    return {"confidence_threshold": 65, "risk_multiplier": 1.0}
+
+def save_config(config):
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
+
+def analyze_performance():
     conn = get_db_connection()
+    if not conn: return
+    
     cursor = conn.cursor(dictionary=True)
     
-    # Find closed trades that haven't been learned from yet
-    # We need a way to track this. Let's check 'trade_learning' table.
-    sql = """
-    SELECT t.* FROM trades t
-    LEFT JOIN trade_learning tl ON t.id = tl.trade_id
-    WHERE t.status = 'CLOSED' AND tl.id IS NULL
-    """
-    cursor.execute(sql)
-    trades_to_learn = cursor.fetchall()
-    
-    if not trades_to_learn:
-        conn.close()
-        return
-
-    print(f"Learning from {len(trades_to_learn)} trades...")
-
-    for trade in trades_to_learn:
-        pnl = float(trade['pnl'])
-        
-        # Determine reward score
-        reward = 0
-        if pnl > 0:
-            reward = 1 # Positive reinforcement
-        else:
-            reward = -1 # Negative reinforcement
-            
-        # In a real ML system, we would update weights here.
-        # For this MVP, we'll just log the learning event and maybe adjust a global "confidence" multiplier
-        # or specific feature weights if we tracked which features triggered the trade.
-        
-        # Let's assume we tracked the rationale in 'signals' table, but we need to link signal to trade.
-        # For now, we'll just store the PnL as the reward.
-        
-        features = {
-            "pnl": pnl,
-            "symbol": trade['symbol'],
-            "entry_price": float(trade['entry_price']),
-            "exit_price": float(trade['exit_price'])
-        }
-        
-        sql_insert = """
-        INSERT INTO trade_learning (trade_id, features_json, reward_score)
-        VALUES (%s, %s, %s)
-        """
-        cursor.execute(sql_insert, (trade['id'], json.dumps(features), reward))
-        
-        # Update model weights (Simulated)
-        # e.g. if RSI was used, increase RSI weight.
-        # Since we don't have the signal link easily here without a join, we'll skip specific weight updates
-        # and just say we "learned".
-        
-    conn.commit()
+    # Get last 50 closed trades
+    cursor.execute("SELECT * FROM trades WHERE status = 'CLOSED' ORDER BY exit_time DESC LIMIT 50")
+    trades = cursor.fetchall()
     conn.close()
-    print("Learning cycle complete.")
+    
+    if not trades:
+        return
+        
+    wins = 0
+    total_pnl = 0
+    
+    for trade in trades:
+        pnl = float(trade['pnl'] or 0)
+        total_pnl += pnl
+        if pnl > 0:
+            wins += 1
+            
+    win_rate = (wins / len(trades)) * 100
+    print(f"Performance Analysis (Last {len(trades)} trades): Win Rate {win_rate:.1f}%, Total PnL ${total_pnl:.2f}")
+    
+    # Adaptive Logic
+    config = load_config()
+    original_conf = config['confidence_threshold']
+    
+    if win_rate < 40:
+        # Performance is poor, be more conservative
+        config['confidence_threshold'] = min(85, config['confidence_threshold'] + 2)
+        print(f"Win Rate Low. Increasing Confidence Threshold to {config['confidence_threshold']}")
+    elif win_rate > 60:
+        # Performance is good, can be slightly more aggressive
+        config['confidence_threshold'] = max(55, config['confidence_threshold'] - 1)
+        print(f"Win Rate High. Decreasing Confidence Threshold to {config['confidence_threshold']}")
+        
+    if config['confidence_threshold'] != original_conf:
+        save_config(config)
 
 if __name__ == "__main__":
-    review_trades()
+    analyze_performance()

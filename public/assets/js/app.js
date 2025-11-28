@@ -428,8 +428,12 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('api/trades.php');
             const data = await response.json();
+            console.log('Trades Data:', data);
 
-            if (data.error) return;
+            if (data.error) {
+                console.error('API Error:', data.error);
+                return;
+            }
 
             // Update Balance
             if (data.portfolio && userBalanceEl) {

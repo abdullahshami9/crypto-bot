@@ -140,7 +140,18 @@ def generate_prediction(symbol, interval="1h"):
     
     # Dynamic Target Calculation based on ATR
     atr_val = atr if (atr is not None and pd.notna(atr)) else (close * 0.02) # Fallback
+    
+    # Cap ATR at 5% of price to prevent massive candles
+    max_atr = close * 0.05
+    if atr_val > max_atr:
+        atr_val = max_atr
+        
     target_move = atr_val * 2 * direction # Target is 2x ATR
+    
+    # Final safety clamp on target move (max 10% move total)
+    max_move = close * 0.1
+    if abs(target_move) > max_move:
+        target_move = max_move * direction
     
     pred_open = close
     pred_close = close + target_move

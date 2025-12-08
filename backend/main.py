@@ -1,6 +1,8 @@
 import time
 import threading
 import warnings
+import json
+import os
 import warnings
 import data_ingest
 import analysis_engine
@@ -66,6 +68,8 @@ def market_monitor():
             
         except Exception as e:
             print(f"[Critical Error] Market Monitor: {e}")
+            import traceback
+            traceback.print_exc()
             time.sleep(60)
 
 def prediction_service():
@@ -75,45 +79,79 @@ def prediction_service():
     print(" [Thread-2] Prediction Service Started")
     global running
     
-    # Symbols to predict for (refresh list periodically)
-    # For simplicity, we fetch top volume pairs or a fixed list
+    FOCUS_FILE = 'focus.json'
     
     while running:
         try:
+            # Check for focused symbol
+            active_symbol = None
+            if os.path.exists(FOCUS_FILE):
+                try:
+                    with open(FOCUS_FILE, 'r') as f:
+                        focus_data = json.load(f)
+                        if time.time() - focus_data.get('timestamp', 0) < 120: # Focus valid for 2 mins
+                            active_symbol = focus_data.get('symbol')
+                except:
+                    pass
+
             conn = get_db_connection()
             if not conn:
                 time.sleep(60)
                 continue
                 
             cursor = conn.cursor(dictionary=True)
-            # Get top 20 symbols from coins to predict
+            
+            # If we have an active symbol, predict for it IMMEDIATELY
+            if active_symbol:
+                # print(f"[Prediction] Priority Analysis: {active_symbol}")
+                try:
+                    # Update History First
+                    data_ingest.update_historical_data(active_symbol)
+                    
+                    # Generate Prediction
+                    intervals = ['15m', '1h'] # Fast intervals for active focus
+                    for interval in intervals:
+                        pred = prediction_engine.generate_prediction(active_symbol, interval)
+                        if pred:
+                            prediction_engine.save_prediction(pred)
+                except Exception as e:
+                    print(f"[Focus Error] {active_symbol}: {e}")
+
+            # Normal Batch (Top 20)
+            # Run this less frequently if focus is active, or run in background
+            # To utilize "Single Server" efficiently, we will run batch every few loops
+            # or interleaved. For now, let's run batch every loop but sleep longer.
+            
             cursor.execute("SELECT symbol FROM coins WHERE symbol LIKE '%USDT' ORDER BY volume DESC LIMIT 20")
             symbols = [row['symbol'] for row in cursor.fetchall()]
             conn.close()
             
-            print(f"\n[Prediction] Generating forecasts for {len(symbols)} symbols...")
+            # print(f"\n[Prediction] Generating forecasts for {len(symbols)} symbols...")
             
             for symbol in symbols:
                 if not running: break
                 
-                # Generate predictions for different timeframes
-                intervals = ['15m', '1h', '4h']
+                # specific check for active symbol if we just did it
+                if symbol == active_symbol: continue
+                
+                intervals = ['1h', '4h']
                 for interval in intervals:
                     try:
-                        # Ensure we have data for this interval (data_ingest usually handles 1h/15m/4h/1d)
-                        # data_ingest.update_historical_data handles the default klines, but prediction requires specific ones.
-                        # Assuming data_ingest populates the necessary tables.
-                        
+                        # data_ingest.update_historical_data(symbol) -- relied on market_monitor for updates
                         pred = prediction_engine.generate_prediction(symbol, interval)
                         if pred:
                             prediction_engine.save_prediction(pred)
-                            # print(f"  > Pred saved: {symbol} {interval}")
                     except Exception as p_err:
-                        print(f"  ! Error optimizing {symbol} {interval}: {p_err}")
+                        # print(f"  ! Error optimizing {symbol} {interval}: {p_err}")
+                        pass
                         
-            print("[Prediction] Batch complete. Sleeping for 5 minutes...")
-            # Sleep in small chunks to check 'running' flag
-            for _ in range(300): # 300 seconds = 5 mins
+            # Sleep logic
+            # If active symbol exists, loop faster (e.g., 10s) to keep it fresh
+            # If not, sleep longer (5m)
+            sleep_time = 10 if active_symbol else 300
+            
+            # print(f"[Prediction] Sleeping {sleep_time}s...")
+            for _ in range(sleep_time):
                 if not running: break
                 time.sleep(1)
                 

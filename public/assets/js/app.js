@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let chart;
     let candleSeries;
     let predictionSeries;
+    let successSeries;
     let currentSymbol = 'BTCUSDT';
     let currentInterval = '1h';
     let ws = null;
@@ -140,6 +141,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetchData(currentSymbol, currentInterval);
             });
         });
+
+        // --- Focus Start ---
+        function sendFocusHeartbeat() {
+            if (!currentSymbol) return;
+            fetch('api/set_focus.php', {
+                method: 'POST', body: JSON.stringify({ symbol: currentSymbol })
+            }).catch(e => console.error(e));
+        }
+        setInterval(sendFocusHeartbeat, 10000);
+        // --- Focus End ---
 
         // Tabs
         if (tabBtnTrades && tabBtnOrderbook) {
@@ -458,7 +469,10 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         chart = LightweightCharts.createChart(chartContainer, chartOptions);
         candleSeries = chart.addCandlestickSeries({
-            upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false, wickUpColor: '#0ecb81', wickDownColor: '#f6465d',
+            upColor: '#cfd8dc', downColor: '#808080', borderVisible: false, wickUpColor: '#cfd8dc', wickDownColor: '#808080',
+        });
+        successSeries = chart.addCandlestickSeries({
+            upColor: '#38b6ff', downColor: '#38b6ff', borderVisible: false, wickUpColor: '#38b6ff', wickDownColor: '#38b6ff',
         });
         predictionSeries = chart.addCandlestickSeries({
             upColor: 'rgba(240, 185, 11, 0.5)', downColor: 'rgba(240, 185, 11, 0.5)', borderVisible: true, borderColor: '#f0b90b', wickUpColor: '#f0b90b', wickDownColor: '#f0b90b',
@@ -497,19 +511,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 cryptoTitle.innerHTML = `${symbol} <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-bg border border-border text-text-secondary">PERP</span>`;
             }
             const response = await fetch(`api/market_data.php?symbol=${symbol}&interval=${interval}`);
+            sendFocusHeartbeat();
             const data = await response.json();
             if (data.error) return;
 
+
             if (candleSeries && data.candles) {
                 candleSeries.setData(data.candles);
+                if (successSeries) successSeries.setData([]); // Reset success overlay on load
+
                 if (data.candles.length > 0) lastUpdateTime = data.candles[data.candles.length - 1].time;
 
                 if (data.prediction) {
                     predictionSeries.setData([data.prediction]);
                     updatePredictionPanel(data.prediction, interval);
+                    window.currentPrediction = data.prediction; // Store for realtime logic
                 } else {
                     predictionSeries.setData([]);
                     resetPredictionPanel();
+                    window.currentPrediction = null;
                 }
                 chart.timeScale().fitContent();
             }
@@ -621,7 +641,27 @@ document.addEventListener('DOMContentLoaded', () => {
             if (candleTime < lastUpdateTime) return;
             const candle = { time: candleTime, open: parseFloat(kline.o), high: parseFloat(kline.h), low: parseFloat(kline.l), close: parseFloat(kline.c) };
             if (candleSeries) {
-                try { candleSeries.update(candle); lastUpdateTime = candleTime; } catch (error) { console.warn('Chart update skipped:', error.message); }
+                try {
+                    candleSeries.update(candle);
+                    lastUpdateTime = candleTime;
+
+                    if (window.currentPrediction && successSeries) {
+                        const pred = window.currentPrediction;
+                        const isLong = pred.close > pred.open;
+                        const openP = parseFloat(candle.open);
+                        const closeP = parseFloat(candle.close);
+                        let successCandle = null;
+
+                        if (isLong && closeP > openP) {
+                            successCandle = { time: candleTime, open: openP, close: closeP, high: closeP, low: openP };
+                        } else if (!isLong && closeP < openP) {
+                            successCandle = { time: candleTime, open: openP, close: closeP, high: openP, low: closeP };
+                        }
+
+                        if (successCandle) successSeries.update(successCandle);
+                        else successSeries.update({ time: candleTime, open: closeP, close: closeP, high: closeP, low: closeP }); // Invisible
+                    }
+                } catch (error) { console.warn('Chart update skipped:', error.message); }
             }
             const price = candle.close;
             const precision = price < 1.0 ? 8 : 2;

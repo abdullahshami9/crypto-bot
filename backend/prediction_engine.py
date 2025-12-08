@@ -238,15 +238,132 @@ def save_prediction(pred_data):
 
     conn.close()
 
-if __name__ == "__main__":
-    intervals = ["15m", "1h", "4h", "1d", "1M"]
-    symbol = "BTCUSDT"
+def check_predictions():
+    """
+    Verifies past predictions to see if they were correct.
+    Updates the 'outcome' column in the predictions table.
+    """
+    conn = get_db_connection()
+    if not conn: return
+
+    cursor = conn.cursor(dictionary=True)
     
-    for interval in intervals:
-        print(f"Generating prediction for {symbol} {interval}...")
-        prediction = generate_prediction(symbol, interval)
-        if prediction:
-            save_prediction(prediction)
-            print(f"Reasoning: {prediction['reasoning']}")
-        else:
-            print(f"Failed to generate prediction for {interval}.")
+    # 1. Ensure 'outcome' column exists
+    try:
+        cursor.execute("SHOW COLUMNS FROM predictions LIKE 'outcome'")
+        result = cursor.fetchone()
+        if not result:
+            print("Adding 'outcome' column to predictions table...")
+            cursor.execute("ALTER TABLE predictions ADD COLUMN outcome VARCHAR(20) DEFAULT 'PENDING'")
+            conn.commit()
+    except Exception as e:
+        print(f"Error checking schema: {e}")
+
+    # 2. Fetch Pending Predictions that are due
+    # predicted_time is the END of the interval. So if now > prediction_time, we can verify.
+    # Limit to 50 to avoid hogging
+    cursor.execute("""
+        SELECT * FROM predictions 
+        WHERE outcome = 'PENDING' AND prediction_time < NOW() 
+        ORDER BY prediction_time ASC 
+        LIMIT 50
+    """)
+    pending = cursor.fetchall()
+    
+    updates = []
+    
+    for p in pending:
+        symbol = p['symbol']
+        pred_close = float(p['predicted_close'])
+        pred_open = float(p['predicted_open']) # This was the price at valid_at (start)
+        
+        # Determine direction
+        is_long = pred_close > pred_open
+        
+        # We need to find highest/lowest point between creation and prediction_time
+        # For simplicity, we just check the candle that covers this prediction window.
+        # Since we don't store "created_at" in the table explicitly (except maybe default timestamp?), 
+        # we can assume prediction covers the candles having close_time <= prediction_time
+        # and close_time > prediction_time - interval.
+        
+        # Let's simple check the price history
+        
+        start_time_guess = p['prediction_time'] - timedelta(hours=1) # rough guess for 1h
+        if p['interval'] == '15m': start_time_guess = p['prediction_time'] - timedelta(minutes=15)
+        elif p['interval'] == '4h': start_time_guess = p['prediction_time'] - timedelta(hours=4)
+        
+        # Query candles
+        sql = f"""
+            SELECT high, low, close FROM historical_candles 
+            WHERE symbol = '{symbol}' 
+            AND close_time <= '{p['prediction_time']}' 
+            AND close_time > '{start_time_guess}'
+        """
+        cursor.execute(sql)
+        candles = cursor.fetchall()
+        
+        outcome = 'FAILURE'
+        
+        if candles:
+            # Check if target was hit in any candle
+            max_h = max([float(c['high']) for c in candles])
+            min_l = min([float(c['low']) for c in candles])
+            final_c = float(candles[-1]['close'])
+            
+            if is_long:
+                # Success if we hit the target close (or higher)
+                if max_h >= pred_close:
+                    outcome = 'SUCCESS'
+                # Also partial success if final close is significantly higher than open (even if target missed)
+                elif final_c > pred_open + (pred_close - pred_open) * 0.5:
+                     outcome = 'SUCCESS' # Good enough
+            else:
+                # Success if we hit target (or lower)
+                if min_l <= pred_close:
+                    outcome = 'SUCCESS'
+                elif final_c < pred_open - (pred_open - pred_close) * 0.5:
+                     outcome = 'SUCCESS'
+
+        # Update
+        updates.append((outcome, p['id']))
+        
+    # Bulk update
+    if updates:
+        print(f"[Prediction] Verifying {len(updates)} past outcomes...")
+        upd_sql = "UPDATE predictions SET outcome = %s WHERE id = %s"
+        cursor.executemany(upd_sql, updates)
+        conn.commit()
+        
+    conn.close()
+
+def get_success_ratio():
+    conn = get_db_connection()
+    if not conn: return 0
+    
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Check if outcome column exists first to avoid error on fresh run
+        cursor.execute("SHOW COLUMNS FROM predictions LIKE 'outcome'")
+        if not cursor.fetchone():
+            conn.close()
+            return 0
+
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN outcome = 'SUCCESS' THEN 1 ELSE 0 END) as wins
+            FROM predictions 
+            WHERE outcome IN ('SUCCESS', 'FAILURE')
+            ORDER BY prediction_time DESC 
+            LIMIT 100
+        """)
+        res = cursor.fetchone()
+        conn.close()
+        
+        if res and res['total'] > 0:
+            return float((res['wins'] / res['total']) * 100)
+    except:
+        if conn: conn.close()
+    
+    return 0.0

@@ -26,9 +26,7 @@
 
     <div class="w-full max-w-md p-8 bg-bg-card rounded-2xl border border-gray-800 shadow-2xl">
         <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-tr from-accent-blue to-purple-600 text-white font-bold text-xl mb-4 shadow-lg shadow-accent-blue/20">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            </div>
+            <img src="assets/images/logo-dark-mode.png" alt="CryptoIntel" class="h-16 w-auto mx-auto mb-4">
             <h1 class="text-2xl font-bold">Sign in</h1>
             <p class="text-text-secondary mt-2">to continue to CryptoIntel</p>
         </div>

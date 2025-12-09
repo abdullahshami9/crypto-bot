@@ -2,10 +2,7 @@
     <div class="flex items-center gap-6">
         <!-- Logo -->
         <div class="flex items-center gap-2 cursor-pointer" onclick="window.location.href='index.php'">
-            <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-accent-blue to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-accent-blue/20">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            </div>
-            <span class="text-lg font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-400">CryptoIntel</span>
+            <img src="assets/images/logo-dark-mode.png" alt="CryptoIntel" class="h-10 w-auto">
         </div>
         
         <!-- Navigation -->

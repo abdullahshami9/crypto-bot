@@ -469,7 +469,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         chart = LightweightCharts.createChart(chartContainer, chartOptions);
         candleSeries = chart.addCandlestickSeries({
-            upColor: '#cfd8dc', downColor: '#808080', borderVisible: false, wickUpColor: '#cfd8dc', wickDownColor: '#808080',
+            upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false, wickUpColor: '#0ecb81', wickDownColor: '#f6465d',
         });
         successSeries = chart.addCandlestickSeries({
             upColor: '#38b6ff', downColor: '#38b6ff', borderVisible: false, wickUpColor: '#38b6ff', wickDownColor: '#38b6ff',

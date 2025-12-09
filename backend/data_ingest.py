@@ -80,14 +80,14 @@ def update_market_data(data):
     conn.close()
     print("Market data updated.")
 
-def update_historical_data(symbol, interval="1h"):
+def update_historical_data(symbol, interval="1h", limit=100):
     conn = get_db_connection()
     if not conn:
         return
 
     cursor = conn.cursor()
     
-    candles = fetch_historical_candles(symbol, interval)
+    candles = fetch_historical_candles(symbol, interval, limit)
     if not candles:
         conn.close()
         return

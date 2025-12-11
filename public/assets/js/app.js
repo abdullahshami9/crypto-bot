@@ -42,8 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const botStatusIndicator = document.getElementById('bot-status-indicator');
 
     // --- Analysis Page Elements ---
-    const analysisSignalsBody = document.getElementById('analysis-signals-body');
-    const analysisPredictionsBody = document.getElementById('analysis-predictions-body');
+    const analysisSignalsTableBody = document.getElementById('analysis-signals-table-body');
+    const analysisPredictionsTableBody = document.getElementById('analysis-predictions-table-body');
 
     // --- State ---
     let chart;
@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Analysis Page Logic ---
-    if (analysisSignalsBody) {
+    if (analysisSignalsTableBody) {
         fetchAnalysisData();
     }
 
@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchWatchlist();
         if (activeTradesList) fetchTradesSidebar();
         if (dashBalance) fetchDashboardData();
-        if (analysisSignalsBody) fetchAnalysisData();
+        if (analysisSignalsTableBody) fetchAnalysisData();
     }, 3000);
 
     // --- Functions ---
@@ -353,42 +353,141 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAnalysisData() {
         try {
             const response = await fetch('api/analysis.php');
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
 
-            if (analysisSignalsBody && data.signals) {
-                analysisSignalsBody.innerHTML = '';
-                data.signals.forEach(sig => {
-                    const row = document.createElement('tr');
-                    row.className = 'hover:bg-bg-hover transition-colors border-b border-border';
-                    row.innerHTML = `
-                        <td class="px-4 py-3 font-bold">${sig.symbol}</td>
-                        <td class="px-4 py-3"><span class="text-xs font-bold px-2 py-0.5 rounded ${sig.signal_type === 'BUY' ? 'bg-accent-teal/10 text-accent-teal' : 'bg-accent-red/10 text-accent-red'}">${sig.signal_type}</span></td>
-                        <td class="px-4 py-3 font-mono">${sig.score}</td>
-                        <td class="px-4 py-3 text-xs text-text-secondary max-w-xs truncate" title="${sig.rationale}">${sig.rationale}</td>
-                        <td class="px-4 py-3 text-xs text-text-secondary max-w-xs truncate" title="${sig.llm_analysis}">${sig.llm_analysis || '-'}</td>
-                        <td class="px-4 py-3 text-xs text-text-muted">${new Date(sig.created_at).toLocaleString()}</td>
-                    `;
-                    analysisSignalsBody.appendChild(row);
-                });
+            if (data.error) throw new Error(data.error);
+
+            if (analysisSignalsTableBody && data.signals) {
+                if (data.signals.length === 0) {
+                    analysisSignalsTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-text-secondary">No signals available.</td></tr>';
+                } else {
+                    analysisSignalsTableBody.innerHTML = '';
+                    data.signals.forEach(sig => {
+                        const isBuy = sig.signal_type === 'BUY';
+                        const accentColor = isBuy ? 'border-accent-teal' : 'border-accent-red';
+                        const badgeBg = isBuy ? 'bg-accent-teal/10 text-accent-teal' : 'bg-accent-red/10 text-accent-red';
+
+                        const div = document.createElement('div');
+                        row.className = 'hover:bg-bg-hover transition-colors cursor-pointer group';
+                        row.onclick = () => {
+                            const detailRow = document.getElementById(uniqueId);
+                            const icon = document.getElementById(`icon-${uniqueId}`);
+                            if (detailRow.classList.contains('hidden')) {
+                                detailRow.classList.remove('hidden');
+                                icon.style.transform = 'rotate(180deg)';
+                            } else {
+                                detailRow.classList.add('hidden');
+                                icon.style.transform = 'rotate(0deg)';
+                            }
+                        };
+
+                        row.innerHTML = `
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-8 h-8 rounded-lg bg-bg border border-border flex items-center justify-center font-bold text-sm">
+                                        ${sig.symbol.substring(0, 1)}
+                                    </div>
+                                    <span class="font-bold">${sig.symbol}</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="px-2.5 py-1 rounded-md text-xs font-bold ${badgeBg}">
+                                    ${sig.signal_type}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 font-mono text-sm">${sig.score}</td>
+                            <td class="px-6 py-4 text-xs text-text-secondary">${new Date(sig.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                            <td class="px-6 py-4 text-right">
+                                <svg id="icon-${uniqueId}" class="w-5 h-5 text-text-secondary transition-transform duration-200 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </td>
+                        `;
+                        analysisSignalsTableBody.appendChild(row);
+
+                        // Detail Row
+                        const detailRow = document.createElement('tr');
+                        detailRow.id = uniqueId;
+                        detailRow.className = 'hidden bg-bg-hover/30';
+                        detailRow.innerHTML = `
+                            <td colspan="5" class="px-6 py-6">
+                                <div class="flex flex-col gap-4">
+                                    <div>
+                                        <h4 class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2">Rationale</h4>
+                                        <p class="text-sm text-text-primary leading-relaxed">${sig.rationale}</p>
+                                    </div>
+                                    ${sig.llm_analysis ? `
+                                    <div class="pt-4 border-t border-border">
+                                        <h4 class="text-xs font-bold text-accent-blue uppercase tracking-wider mb-2 flex items-center gap-2">
+                                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                            AI Insight
+                                        </h4>
+                                        <p class="text-sm text-text-secondary italic">"${sig.llm_analysis}"</p>
+                                    </div>` : ''}
+                                    <div class="mt-2 text-right">
+                                        <a href="chart.php?symbol=${sig.symbol}" class="inline-flex items-center gap-1 text-sm font-bold text-accent-blue hover:text-white transition-colors">
+                                            Open Chart <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                                        </a>
+                                    </div>
+                                </div>
+                            </td>
+                        `;
+                        analysisSignalsTableBody.appendChild(detailRow);
+                    });
+                }
             }
 
-            if (analysisPredictionsBody && data.predictions) {
-                analysisPredictionsBody.innerHTML = '';
-                data.predictions.forEach(pred => {
-                    const row = document.createElement('tr');
-                    row.className = 'hover:bg-bg-hover transition-colors border-b border-border';
-                    row.innerHTML = `
-                        <td class="px-4 py-3 font-bold">${pred.symbol}</td>
-                        <td class="px-4 py-3 text-xs uppercase">${pred.interval}</td>
-                        <td class="px-4 py-3 font-mono">${parseFloat(pred.predicted_close).toFixed(2)}</td>
-                        <td class="px-4 py-3 font-mono">${pred.confidence_score}%</td>
-                        <td class="px-4 py-3 text-xs text-text-muted">${new Date(pred.prediction_time).toLocaleString()}</td>
+            if (analysisPredictionsTableBody && data.predictions) {
+                if (data.predictions.length === 0) {
+                    analysisPredictionsTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-text-secondary">No predictions available.</td></tr>';
+                } else {
+                    analysisPredictionsTableBody.innerHTML = '';
+                    data.predictions.forEach(pred => {
+                        const confidence = parseFloat(pred.confidence_score);
+                        const isHighConf = confidence > 75;
+
+                        const div = document.createElement('div');
+                        div.className = `bg-bg-card border border-border rounded-xl p-5 hover:border-purple-500/50 hover:shadow-lg transition-all duration-300 relative overflow-hidden`;
+                        div.innerHTML = `
+                        <div class="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        
+                        <div class="flex justify-between items-start mb-3 relative z-10">
+                            <span class="font-bold text-md">${pred.symbol}</span>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-bg border border-border text-text-secondary uppercase tracking-wide">${pred.interval}</span>
+                        </div>
+
+                        <div class="flex items-end justify-between relative z-10">
+                            <div>
+                                <span class="text-xs text-text-secondary block mb-0.5">Target Price</span>
+                                <span class="text-xl font-mono font-bold tracking-tight">${parseFloat(pred.predicted_close).toFixed(2)}</span>
+                            </div>
+                            <div class="text-right">
+                                <span class="block text-[10px] text-text-secondary mb-1">Confidence</span>
+                                <div class="relative w-12 h-12 flex items-center justify-center">
+                                    <svg class="w-full h-full transform -rotate-90">
+                                        <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="4" class="text-bg-hover"></circle>
+                                        <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="4" class="${isHighConf ? 'text-purple-500' : 'text-accent-blue'}" stroke-dasharray="126" stroke-dashoffset="${126 - (126 * confidence / 100)}"></circle>
+                                    </svg>
+                                    <span class="absolute text-[10px] font-bold">${confidence}%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 pt-3 border-t border-border/50 text-[10px] text-text-muted text-right relative z-10">
+                            Target: ${new Date(pred.prediction_time).toLocaleString()}
+                        </div>
                     `;
-                    analysisPredictionsBody.appendChild(row);
-                });
+                        analysisPredictionsTableBody.appendChild(row);
+                    });
+                }
             }
 
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error("Analysis Fetch Error:", e);
+            if (analysisSignalsTableBody) analysisSignalsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 bg-accent-red/10 text-accent-red text-center">Error: ${e.message}</td></tr>`;
+            if (analysisPredictionsTableBody) analysisPredictionsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 bg-accent-red/10 text-accent-red text-center">Error: ${e.message}</td></tr>`;
+        }
     }
 
     async function fetchTradesSidebar() {

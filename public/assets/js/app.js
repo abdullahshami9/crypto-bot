@@ -218,6 +218,12 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchAnalysisData();
     }
 
+    // --- Daily Analysis Page Logic ---
+    const dailyHighsContainer = document.getElementById('daily-highs-container');
+    if (dailyHighsContainer) {
+        fetchDailyAnalysis();
+    }
+
     // --- Shared Logic (Watchlist, Trades Sidebar) ---
     fetchWatchlist();
     if (activeTradesList) fetchTradesSidebar();
@@ -488,6 +494,115 @@ document.addEventListener('DOMContentLoaded', () => {
             if (analysisSignalsTableBody) analysisSignalsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 bg-accent-red/10 text-accent-red text-center">Error: ${e.message}</td></tr>`;
             if (analysisPredictionsTableBody) analysisPredictionsTableBody.innerHTML = `<tr><td colspan="5" class="p-4 bg-accent-red/10 text-accent-red text-center">Error: ${e.message}</td></tr>`;
         }
+    }
+
+    async function fetchDailyAnalysis() {
+        const highsContainer = document.getElementById('daily-highs-container');
+        const lowsContainer = document.getElementById('daily-lows-container');
+        const insightsContainer = document.getElementById('daily-insights-container');
+
+        try {
+            const response = await fetch('api/daily_analysis.php');
+            const data = await response.json();
+
+            if (highsContainer && data.highs) {
+                highsContainer.innerHTML = '';
+                data.highs.forEach(coin => {
+                    const card = createDailyCard(coin, 'high');
+                    highsContainer.appendChild(card);
+                });
+            }
+
+            if (lowsContainer && data.lows) {
+                lowsContainer.innerHTML = '';
+                data.lows.forEach(coin => {
+                    const card = createDailyCard(coin, 'low');
+                    lowsContainer.appendChild(card);
+                });
+            }
+
+            if (insightsContainer && data.insights) {
+                insightsContainer.innerHTML = '';
+                data.insights.forEach(insight => {
+                    const div = document.createElement('div');
+                    div.className = 'bg-bg hover:bg-bg-hover border border-border rounded-xl p-4 flex gap-3 items-start transition-colors';
+                    const iconColor = insight.type === 'hot' ? 'text-accent-red bg-accent-red/10' : 'text-accent-teal bg-accent-teal/10';
+                    const icon = insight.type === 'hot'
+                        ? '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>'
+                        : '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+
+                    div.innerHTML = `
+                        <div class="p-2 rounded-full shrink-0 ${iconColor}">
+                            ${icon}
+                        </div>
+                        <div>
+                            <span class="font-bold ml-1 ${insight.type === 'hot' ? 'text-accent-red' : 'text-accent-teal'}">${insight.title}</span>
+                            <span class="text-text-secondary text-sm ml-1">${insight.text}</span>
+                        </div>
+                    `;
+                    insightsContainer.appendChild(div);
+                });
+            }
+
+        } catch (e) {
+            console.error("Error fetching daily analysis:", e);
+        }
+    }
+
+    function createDailyCard(coin, type) {
+        const div = document.createElement('div');
+        div.className = 'bg-bg text-text-primary p-6 rounded-xl border border-border hover:shadow-lg transition-all pt-10 relative mt-4'; // Added pt-10 for overlapping badge
+
+        const badgeColor = type === 'high' ? 'bg-amber-100/10 text-amber-500' : 'bg-blue-100/10 text-blue-500';
+        const badgeBg = type === 'high' ? '#fff7ed' : '#eff6ff'; // Light mode fallback
+        const badgeText = type === 'high' ? '#f59e0b' : '#3b82f6';
+
+        // Conditional styling for light/dark mode handled by CSS vars usually, but hardcoded here for speed as per mock
+        const badgeClass = `absolute top-4 right-4 px-3 py-1 text-xs font-bold rounded-full ${badgeColor}`;
+
+        const priceColor = type === 'high' ? 'text-accent-teal' : 'text-text-primary'; // Highs usually mean high price, but let's stick to design.
+        // Actually, for ATH analysis: 
+        // Highs: "Current Price: $709" (Green)
+        // Lows: "Current Price: $3.20" (Normal/Bold)
+
+        const actionBtnClass = type === 'high'
+            ? 'bg-accent-red/90 hover:bg-accent-red text-white'
+            : 'bg-accent-teal/10 text-accent-teal hover:bg-accent-teal hover:text-white';
+
+        const analysisBg = type === 'high' ? 'bg-red-500/5 text-red-500' : 'bg-green-500/5 text-green-500';
+
+        div.innerHTML = `
+            <div class="${badgeClass}">${coin.badge}</div>
+            
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center font-bold text-white text-lg">
+                    ${coin.symbol[0]}
+                </div>
+                <div>
+                    <h3 class="font-bold text-lg">${coin.symbol} - ${coin.name}</h3>
+                </div>
+            </div>
+
+            <div class="space-y-3 mb-6">
+                <div class="flex items-center gap-2 text-sm text-text-secondary">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                    Current Price: <span class="font-mono font-bold text-base ${type === 'high' ? 'text-accent-teal' : 'text-text-primary'}">$${coin.price}</span>
+                </div>
+                <div class="flex items-center gap-2 text-sm text-text-secondary">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                    ${coin.description}
+                </div>
+                <div class="flex items-center gap-2 text-sm mt-3">
+                    <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                    Analysis: <span class="font-bold px-2 py-0.5 rounded ${analysisBg} text-xs uppercase tracking-wide">${coin.analysis}</span>
+                </div>
+            </div>
+
+            <button class="w-full py-2.5 rounded-lg font-bold text-sm transition-colors ${actionBtnClass}">
+                ${coin.action}
+            </button>
+        `;
+        return div;
     }
 
     async function fetchTradesSidebar() {

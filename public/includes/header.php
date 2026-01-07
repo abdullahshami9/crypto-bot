@@ -14,6 +14,7 @@
                 <?php endif; ?>
                 <a href="chart.php" class="px-3 py-1.5 text-sm font-medium <?php echo basename($_SERVER['PHP_SELF']) == 'chart.php' ? 'text-accent-blue bg-accent-blue/10' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'; ?> rounded-md transition-colors">Markets</a>
                 <a href="analysis.php" class="px-3 py-1.5 text-sm font-medium <?php echo basename($_SERVER['PHP_SELF']) == 'analysis.php' ? 'text-accent-blue bg-accent-blue/10' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'; ?> rounded-md transition-colors">Analysis</a>
+                <a href="daily_analysis.php" class="px-3 py-1.5 text-sm font-medium <?php echo basename($_SERVER['PHP_SELF']) == 'daily_analysis.php' ? 'text-accent-blue bg-accent-blue/10' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'; ?> rounded-md transition-colors">Daily Analysis</a>
             <?php endif; ?>
         </nav>
     </div>

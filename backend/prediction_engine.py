@@ -73,12 +73,17 @@ def generate_prediction(symbol, interval="1h"):
     reasons = []
 
     # 1. Trend Analysis (SMA)
+    trend_bullish = False
+    trend_bearish = False
+
     if sma50 is not None and sma200 is not None and pd.notna(sma50) and pd.notna(sma200):
         if sma50 > sma200:
             score += 10
+            trend_bullish = True
             reasons.append("Golden Cross / Bullish Trend (SMA50 > SMA200)")
         elif sma50 < sma200:
             score -= 10
+            trend_bearish = True
             reasons.append("Death Cross / Bearish Trend (SMA50 < SMA200)")
 
     if sma50 is not None and pd.notna(sma50):
@@ -90,12 +95,17 @@ def generate_prediction(symbol, interval="1h"):
             reasons.append("Price below SMA50")
 
     # 2. Momentum (RSI)
+    rsi_bullish = False
+    rsi_bearish = False
+
     if rsi is not None and pd.notna(rsi):
         if rsi < 30:
             score += 20
+            rsi_bullish = True
             reasons.append(f"Oversold RSI ({rsi:.2f}) - Potential Bounce")
         elif rsi > 70:
             score -= 20
+            rsi_bearish = True
             reasons.append(f"Overbought RSI ({rsi:.2f}) - Potential Pullback")
         else:
             # Neutral but check slope
@@ -132,6 +142,19 @@ def generate_prediction(symbol, interval="1h"):
             score -= 10
             reasons.append("High Volume Selling")
 
+    # --- VETO LOGIC ---
+    # Improve accuracy by cancelling out weak or conflicting signals
+
+    # 1. If Trend is Bearish but RSI is Oversold (Bullish), risk is high.
+    #    Reduce confidence significantly.
+    if trend_bearish and rsi_bullish:
+        score = score * 0.5
+        reasons.append("[VETO] Trend Bearish but RSI Oversold -> Weak Signal")
+
+    if trend_bullish and rsi_bearish:
+        score = score * 0.5
+        reasons.append("[VETO] Trend Bullish but RSI Overbought -> Weak Signal")
+
     # Final Decision
     confidence = 50 + abs(score)
     confidence = min(max(confidence, 10), 95) # Cap at 95%
@@ -141,15 +164,26 @@ def generate_prediction(symbol, interval="1h"):
     # Dynamic Target Calculation based on ATR
     atr_val = atr if (atr is not None and pd.notna(atr)) else (close * 0.02) # Fallback
     
-    # Cap ATR at 5% of price to prevent massive candles
-    max_atr = close * 0.05
+    # Cap ATR at 3% of price (reduced from 5% to prevent massive candles)
+    max_atr = close * 0.03
     if atr_val > max_atr:
         atr_val = max_atr
+
+    # Dynamic Target Multiplier:
+    # If confidence is high (>80), we can target 1.5 ATR.
+    # If confidence is moderate (60-80), target 1.0 ATR.
+    # If low, target 0.5 ATR.
+
+    target_multiplier = 0.5
+    if confidence > 80:
+        target_multiplier = 1.5
+    elif confidence > 65:
+        target_multiplier = 1.0
         
-    target_move = atr_val * 2 * direction # Target is 2x ATR
+    target_move = atr_val * target_multiplier * direction
     
-    # Final safety clamp on target move (max 10% move total)
-    max_move = close * 0.1
+    # Final safety clamp on target move (max 5% move total to avoid "boht upr/niche")
+    max_move = close * 0.05
     if abs(target_move) > max_move:
         target_move = max_move * direction
     

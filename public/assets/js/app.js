@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Global Elements ---
     const searchInput = document.getElementById('search-input');
     const searchWidget = document.getElementById('search-widget');
+    const addCoinBtn = document.getElementById('add-coin-btn');
     const themeToggle = document.getElementById('theme-toggle');
 
     // --- Chart Page Elements ---
@@ -110,6 +111,39 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener('click', (e) => {
             if (!searchInput.contains(e.target) && !searchWidget.contains(e.target)) {
                 searchWidget.classList.add('hidden');
+            }
+        });
+    }
+
+    // --- Add Coin Logic ---
+    if (addCoinBtn) {
+        addCoinBtn.addEventListener('click', async () => {
+            const symbol = prompt("Enter the coin symbol (e.g. XRV, PEPE, BTC):");
+            if (!symbol) return;
+
+            try {
+                // Show simple loading state (cursor)
+                document.body.style.cursor = 'wait';
+
+                const response = await fetch('api/add_coin.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: symbol })
+                });
+                const res = await response.json();
+
+                document.body.style.cursor = 'default';
+
+                if (res.success) {
+                    alert(`Successfully added ${res.symbol}. Redirecting...`);
+                    window.location.href = `chart.php?symbol=${res.symbol}`;
+                } else {
+                    alert(`Error: ${res.error}`);
+                }
+            } catch (e) {
+                document.body.style.cursor = 'default';
+                console.error(e);
+                alert("An error occurred while adding the coin.");
             }
         });
     }
@@ -235,6 +269,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activeTradesList) fetchTradesSidebar();
         if (dashBalance) fetchDashboardData();
         if (analysisSignalsTableBody) fetchAnalysisData();
+
+        // Poll for realtime prediction updates on chart page
+        if (chartContainer && currentSymbol) {
+             // Re-fetch market data which includes prediction
+             // We do this silently without resetting the chart entirely to avoid flicker
+             // But fetchData currently resets everything.
+             // Ideally we should make a separate 'fetchPrediction' function or optimized fetchData.
+             // For now, let's just re-call fetchData but handle the chart update carefully inside it.
+             // Actually, fetchData sets data series which is efficient in lightweight-charts.
+             fetchData(currentSymbol, currentInterval);
+        }
+    }, 60000); // Poll every 60s for predictions/market data
+
+    setInterval(() => {
+        if (document.hidden) return;
+        if (activeTradesList) fetchTradesSidebar(); // Faster polling for trades (3s)
+        if (dashBalance) fetchDashboardData();
     }, 3000);
 
     // --- Functions ---

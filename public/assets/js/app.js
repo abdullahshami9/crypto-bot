@@ -501,45 +501,82 @@ document.addEventListener('DOMContentLoaded', () => {
         const lowsContainer = document.getElementById('daily-lows-container');
         const insightsContainer = document.getElementById('daily-insights-container');
 
+        // Show Loading State
+        const loadingHtml = `
+            <div class="animate-pulse space-y-4 py-4">
+                <div class="h-4 bg-bg-hover rounded w-3/4"></div>
+                <div class="h-8 bg-bg-hover rounded"></div>
+                <div class="h-4 bg-bg-hover rounded w-1/2"></div>
+            </div>`;
+
+        if (highsContainer) highsContainer.innerHTML = loadingHtml;
+        if (lowsContainer) lowsContainer.innerHTML = loadingHtml;
+        if (insightsContainer) insightsContainer.innerHTML = loadingHtml;
+
         try {
             const response = await fetch('api/daily_analysis.php');
             const data = await response.json();
 
-            if (highsContainer && data.highs) {
+            if (highsContainer) {
                 highsContainer.innerHTML = '';
-                data.highs.forEach(coin => {
-                    const card = createDailyCard(coin, 'high');
-                    highsContainer.appendChild(card);
-                });
+                if (data.highs && data.highs.length > 0) {
+                    data.highs.forEach(coin => {
+                        const card = createDailyCard(coin, 'high');
+                        highsContainer.appendChild(card);
+                    });
+                } else {
+                    highsContainer.innerHTML = '<div class="text-text-secondary italic">No coins near ATH currently.</div>';
+                }
             }
 
-            if (lowsContainer && data.lows) {
+            if (lowsContainer) {
                 lowsContainer.innerHTML = '';
-                data.lows.forEach(coin => {
-                    const card = createDailyCard(coin, 'low');
-                    lowsContainer.appendChild(card);
-                });
+                if (data.lows && data.lows.length > 0) {
+                    data.lows.forEach(coin => {
+                        const card = createDailyCard(coin, 'low');
+                        lowsContainer.appendChild(card);
+                    });
+                } else {
+                    lowsContainer.innerHTML = '<div class="text-text-secondary italic">No coins near ATL currently.</div>';
+                }
             }
 
-            if (insightsContainer && data.insights) {
+            if (insightsContainer) {
                 insightsContainer.innerHTML = '';
-                data.insights.forEach(insight => {
-                    const div = document.createElement('div');
-                    div.className = 'bg-bg hover:bg-bg-hover border border-border rounded-xl p-4 flex gap-3 items-start transition-colors';
-                    const iconColor = insight.type === 'hot' ? 'text-accent-red bg-accent-red/10' : 'text-accent-teal bg-accent-teal/10';
-                    const icon = insight.type === 'hot'
-                        ? '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>'
-                        : '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+                if (data.insights && data.insights.length > 0) {
+                    data.insights.forEach(insight => {
+                        const div = document.createElement('div');
+                        div.className = 'bg-bg hover:bg-bg-hover border border-border rounded-xl p-4 flex gap-3 items-start transition-colors';
+                        const iconColor = insight.type === 'hot' ? 'text-accent-red bg-accent-red/10' : 'text-accent-teal bg-accent-teal/10';
+                        const icon = insight.type === 'hot'
+                            ? '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>'
+                            : '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
 
-                    div.innerHTML = `
-                        <div class="p-2 rounded-full shrink-0 ${iconColor}">
-                            ${icon}
-                        </div>
-                        <div>
-                            <span class="font-bold ml-1 ${insight.type === 'hot' ? 'text-accent-red' : 'text-accent-teal'}">${insight.title}</span>
-                            <span class="text-text-secondary text-sm ml-1">${insight.text}</span>
-                        </div>
-                    `;
+                        div.innerHTML = `
+                            <div class="p-2 rounded-full shrink-0 ${iconColor}">
+                                ${icon}
+                            </div>
+                            <div>
+                                <span class="font-bold ml-1 ${insight.type === 'hot' ? 'text-accent-red' : 'text-accent-teal'}">${insight.title}</span>
+                                <span class="text-text-secondary text-sm ml-1">${insight.text}</span>
+                            </div>
+                        `;
+                        insightsContainer.appendChild(div);
+                    });
+                } else {
+                    insightsContainer.innerHTML = '<div class="text-text-secondary italic col-span-2">No market insights available at the moment.</div>';
+                }
+            }
+
+        } catch (e) {
+            console.error("Error fetching daily analysis:", e);
+            const errorHtml = `<div class="p-4 bg-accent-red/10 text-accent-red rounded text-center">Failed to load analysis data: ${e.message}</div>`;
+            if (highsContainer) highsContainer.innerHTML = errorHtml;
+            if (lowsContainer) lowsContainer.innerHTML = errorHtml;
+        }
+    }
+                        </div >
+        `;
                     insightsContainer.appendChild(div);
                 });
             }
@@ -558,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const badgeText = type === 'high' ? '#f59e0b' : '#3b82f6';
 
         // Conditional styling for light/dark mode handled by CSS vars usually, but hardcoded here for speed as per mock
-        const badgeClass = `absolute top-4 right-4 px-3 py-1 text-xs font-bold rounded-full ${badgeColor}`;
+        const badgeClass = `absolute top - 4 right - 4 px - 3 py - 1 text - xs font - bold rounded - full ${ badgeColor } `;
 
         const priceColor = type === 'high' ? 'text-accent-teal' : 'text-text-primary'; // Highs usually mean high price, but let's stick to design.
         // Actually, for ATH analysis: 
@@ -572,7 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const analysisBg = type === 'high' ? 'bg-red-500/5 text-red-500' : 'bg-green-500/5 text-green-500';
 
         div.innerHTML = `
-            <div class="${badgeClass}">${coin.badge}</div>
+        < div class="${badgeClass}" > ${ coin.badge }</div >
             
             <div class="flex items-center gap-3 mb-4">
                 <div class="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center font-bold text-white text-lg">
@@ -601,7 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="w-full py-2.5 rounded-lg font-bold text-sm transition-colors ${actionBtnClass}">
                 ${coin.action}
             </button>
-        `;
+    `;
         return div;
     }
 
@@ -625,10 +662,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const div = document.createElement('div');
                     div.className = 'p-2 rounded bg-bg border border-border flex flex-col gap-1';
                     div.innerHTML = `
-                        <div class="flex justify-between items-center">
+        < div class="flex justify-between items-center" >
                             <span class="text-xs font-bold text-text-primary">${trade.symbol}</span>
                             <span class="text-[10px] font-bold ${color}">${trade.type}</span>
-                        </div>
+                        </div >
                         <div class="flex justify-between items-center text-[10px] text-text-secondary">
                             <span>Entry: ${parseFloat(trade.entry_price).toFixed(2)}</span>
                             <span>Qty: ${parseFloat(trade.quantity).toFixed(4)}</span>
@@ -637,7 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="text-xs font-bold ${pnlColor}">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}% ($${pnlAmt.toFixed(2)})</span>
                             <button onclick="closeTrade(${trade.id})" class="px-2 py-0.5 text-[10px] bg-accent-red/10 text-accent-red hover:bg-accent-red hover:text-white rounded transition-colors">Close</button>
                         </div>
-                    `;
+    `;
                     activeTradesList.appendChild(div);
                 });
             } else {
@@ -653,15 +690,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         const div = document.createElement('div');
                         div.className = 'flex items-center justify-between p-2 rounded hover:bg-bg-hover transition-colors border-b border-border/50';
                         div.innerHTML = `
-                            <div class="flex flex-col">
+        < div class="flex flex-col" >
                                 <span class="text-xs font-medium text-text-primary">${trade.symbol}</span>
                                 <span class="text-[10px] text-text-secondary">${trade.type}</span>
-                            </div>
-                            <div class="flex flex-col items-end">
-                                <span class="text-xs font-bold ${pnlColor}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</span>
-                                <span class="text-[10px] text-text-muted">${new Date(trade.exit_time).toLocaleDateString()}</span>
-                            </div>
-                        `;
+                            </div >
+        <div class="flex flex-col items-end">
+            <span class="text-xs font-bold ${pnlColor}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}</span>
+            <span class="text-[10px] text-text-muted">${new Date(trade.exit_time).toLocaleDateString()}</span>
+        </div>
+    `;
                         tradeHistoryList.appendChild(div);
                     });
                 }
@@ -722,9 +759,9 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchData(symbol, interval = '1h') {
         try {
             if (cryptoTitle) {
-                cryptoTitle.innerHTML = `${symbol} <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-bg border border-border text-text-secondary">PERP</span>`;
+                cryptoTitle.innerHTML = `${ symbol } <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-bg border border-border text-text-secondary">PERP</span>`;
             }
-            const response = await fetch(`api/market_data.php?symbol=${symbol}&interval=${interval}`);
+            const response = await fetch(`api / market_data.php ? symbol = ${ symbol }& interval=${ interval } `);
             sendFocusHeartbeat();
             const data = await response.json();
             if (data.error) return;
@@ -754,12 +791,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const change = last.close - prev.close;
                 const changePercent = (change / prev.close) * 100;
                 if (priceChangeEl) {
-                    priceChangeEl.textContent = `${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
-                    priceChangeEl.className = `text-xs font-medium ${change >= 0 ? 'text-accent-teal' : 'text-accent-red'}`;
+                    priceChangeEl.textContent = `${ change >= 0 ? '+' : '' }${ changePercent.toFixed(2) }% `;
+                    priceChangeEl.className = `text - xs font - medium ${ change >= 0 ? 'text-accent-teal' : 'text-accent-red' } `;
                 }
                 if (currentPriceEl) {
                     currentPriceEl.textContent = last.close.toFixed(last.close < 1 ? 8 : 2);
-                    currentPriceEl.className = `text-lg font-mono font-medium ${change >= 0 ? 'text-accent-teal' : 'text-accent-red'}`;
+                    currentPriceEl.className = `text - lg font - mono font - medium ${ change >= 0 ? 'text-accent-teal' : 'text-accent-red' } `;
                 }
             }
             connectWebSocket(symbol, interval);
@@ -771,17 +808,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!predIntervalEl) return;
         predIntervalEl.textContent = interval.toUpperCase();
         if (predConfidenceEl) {
-            predConfidenceEl.textContent = `${prediction.confidence}% CONF`;
+            predConfidenceEl.textContent = `${ prediction.confidence }% CONF`;
             const colorClass = prediction.confidence > 70 ? 'text-accent-teal bg-accent-teal/10' : prediction.confidence > 50 ? 'text-accent-orange bg-accent-orange/10' : 'text-accent-red bg-accent-red/10';
-            predConfidenceEl.className = `px-2 py-0.5 rounded text-[10px] font-bold ${colorClass}`;
+            predConfidenceEl.className = `px - 2 py - 0.5 rounded text - [10px] font - bold ${ colorClass } `;
         }
         if (predTargetEl) predTargetEl.textContent = prediction.close.toFixed(prediction.close < 1 ? 8 : 2);
         if (predDirectionEl) {
             const isBullish = prediction.close > prediction.open;
             predDirectionEl.textContent = isBullish ? 'LONG ↗' : 'SHORT ↘';
-            predDirectionEl.className = `text-xs font-bold ${isBullish ? 'text-accent-teal' : 'text-accent-red'}`;
+            predDirectionEl.className = `text - xs font - bold ${ isBullish ? 'text-accent-teal' : 'text-accent-red' } `;
         }
-        if (predTimeEl) predTimeEl.textContent = `Target: ${new Date(prediction.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        if (predTimeEl) predTimeEl.textContent = `Target: ${ new Date(prediction.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) } `;
     }
 
     function resetPredictionPanel() {
@@ -799,14 +836,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const p = price + (i * spread);
             const amt = (Math.random() * 2).toFixed(4);
             const row = document.createElement('tr');
-            row.innerHTML = `<td class="py-1 px-4 text-accent-red">${p.toFixed(2)}</td><td class="py-1 px-4 text-right text-text-secondary">${amt}</td>`;
+            row.innerHTML = `< td class="py-1 px-4 text-accent-red" > ${ p.toFixed(2) }</td > <td class="py-1 px-4 text-right text-text-secondary">${amt}</td>`;
             obAsks.appendChild(row);
         }
         for (let i = 1; i <= 5; i++) {
             const p = price - (i * spread);
             const amt = (Math.random() * 2).toFixed(4);
             const row = document.createElement('tr');
-            row.innerHTML = `<td class="py-1 px-4 text-accent-teal">${p.toFixed(2)}</td><td class="py-1 px-4 text-right text-text-secondary">${amt}</td>`;
+            row.innerHTML = `< td class="py-1 px-4 text-accent-teal" > ${ p.toFixed(2) }</td > <td class="py-1 px-4 text-right text-text-secondary">${amt}</td>`;
             obBids.appendChild(row);
         }
         if (obPrice) obPrice.textContent = price.toFixed(2);
@@ -828,15 +865,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const changeClass = change >= 0 ? 'text-accent-teal' : 'text-accent-red';
                 const confidence = parseFloat(coin.confidence_score);
                 let badge = '';
-                if (confidence > 80) badge = `<span class="text-[10px] bg-accent-teal/10 text-accent-teal px-1 rounded ml-1">${confidence.toFixed(0)}%</span>`;
+                if (confidence > 80) badge = `< span class="text-[10px] bg-accent-teal/10 text-accent-teal px-1 rounded ml-1" > ${ confidence.toFixed(0) }%</span > `;
                 div.innerHTML = `
-                    <div class="flex items-center gap-2">
+        < div class="flex items-center gap-2" >
                         <div class="w-5 h-5 rounded-full bg-gray-700 flex items-center justify-center text-[8px] font-bold text-white">${coin.symbol.substring(0, 1)}</div>
                         <span class="text-sm font-medium group-hover:text-accent-blue transition-colors">${coin.symbol}</span>
-                        ${badge}
-                    </div>
-                    <span class="text-xs ${changeClass}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</span>
-                `;
+                        ${ badge }
+                    </div >
+        <span class="text-xs ${changeClass}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</span>
+    `;
                 watchlistContainer.appendChild(div);
             });
         } catch (e) { console.error("Error fetching watchlist:", e); }
@@ -847,43 +884,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const wsInterval = interval;
         const wsSymbol = symbol.toLowerCase();
         const wsUrl = `wss://stream.binance.com:9443/ws/${wsSymbol}@kline_${wsInterval}`;
-        ws = new WebSocket(wsUrl);
-        ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            const kline = message.k;
-            const candleTime = Math.floor(kline.t / 1000);
-            if (candleTime < lastUpdateTime) return;
-            const candle = { time: candleTime, open: parseFloat(kline.o), high: parseFloat(kline.h), low: parseFloat(kline.l), close: parseFloat(kline.c) };
-            if (candleSeries) {
-                try {
-                    candleSeries.update(candle);
-                    lastUpdateTime = candleTime;
+    ws = new WebSocket(wsUrl);
+    ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        const kline = message.k;
+        const candleTime = Math.floor(kline.t / 1000);
+        if (candleTime < lastUpdateTime) return;
+        const candle = { time: candleTime, open: parseFloat(kline.o), high: parseFloat(kline.h), low: parseFloat(kline.l), close: parseFloat(kline.c) };
+        if (candleSeries) {
+            try {
+                candleSeries.update(candle);
+                lastUpdateTime = candleTime;
 
-                    if (window.currentPrediction && successSeries) {
-                        const pred = window.currentPrediction;
-                        const isLong = pred.close > pred.open;
-                        const openP = parseFloat(candle.open);
-                        const closeP = parseFloat(candle.close);
-                        let successCandle = null;
+                if (window.currentPrediction && successSeries) {
+                    const pred = window.currentPrediction;
+                    const isLong = pred.close > pred.open;
+                    const openP = parseFloat(candle.open);
+                    const closeP = parseFloat(candle.close);
+                    let successCandle = null;
 
-                        if (isLong && closeP > openP) {
-                            successCandle = { time: candleTime, open: openP, close: closeP, high: closeP, low: openP };
-                        } else if (!isLong && closeP < openP) {
-                            successCandle = { time: candleTime, open: openP, close: closeP, high: openP, low: closeP };
-                        }
-
-                        if (successCandle) successSeries.update(successCandle);
-                        else successSeries.update({ time: candleTime, open: closeP, close: closeP, high: closeP, low: closeP }); // Invisible
+                    if (isLong && closeP > openP) {
+                        successCandle = { time: candleTime, open: openP, close: closeP, high: closeP, low: openP };
+                    } else if (!isLong && closeP < openP) {
+                        successCandle = { time: candleTime, open: openP, close: closeP, high: openP, low: closeP };
                     }
-                } catch (error) { console.warn('Chart update skipped:', error.message); }
-            }
-            const price = candle.close;
-            const precision = price < 1.0 ? 8 : 2;
-            if (currentPriceEl) currentPriceEl.textContent = price.toFixed(precision);
-            if (obPrice) obPrice.textContent = price.toFixed(precision);
-            document.title = `${price.toFixed(precision)} | ${symbol} | CryptoIntel`;
-        };
-    }
+
+                    if (successCandle) successSeries.update(successCandle);
+                    else successSeries.update({ time: candleTime, open: closeP, close: closeP, high: closeP, low: closeP }); // Invisible
+                }
+            } catch (error) { console.warn('Chart update skipped:', error.message); }
+        }
+        const price = candle.close;
+        const precision = price < 1.0 ? 8 : 2;
+        if (currentPriceEl) currentPriceEl.textContent = price.toFixed(precision);
+        if (obPrice) obPrice.textContent = price.toFixed(precision);
+        document.title = `${price.toFixed(precision)} | ${symbol} | CryptoIntel`;
+    };
+}
 
     // Global Close Trade
     window.closeTrade = async (tradeId) => {

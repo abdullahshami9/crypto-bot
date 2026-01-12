@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const searchWidget = document.getElementById('search-widget');
     const addCoinBtn = document.getElementById('add-coin-btn');
+    const syncCoinBtn = document.getElementById('sync-coin-btn');
     const themeToggle = document.getElementById('theme-toggle');
 
     // --- Chart Page Elements ---
@@ -144,6 +145,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.style.cursor = 'default';
                 console.error(e);
                 alert("An error occurred while adding the coin.");
+            }
+        });
+    }
+
+    // --- Sync Coin Logic ---
+    if (syncCoinBtn) {
+        syncCoinBtn.addEventListener('click', async () => {
+            if (!currentSymbol) return;
+
+            // Confirm with user
+            if (!confirm(`Sync data for ${currentSymbol}? This might take a few seconds.`)) return;
+
+            try {
+                syncCoinBtn.classList.add('animate-spin', 'text-accent-blue');
+                document.body.style.cursor = 'wait';
+
+                const response = await fetch('api/sync_coin.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: currentSymbol })
+                });
+                const res = await response.json();
+
+                syncCoinBtn.classList.remove('animate-spin', 'text-accent-blue');
+                document.body.style.cursor = 'default';
+
+                if (res.success) {
+                    // alert(res.message);
+                    // Refresh data
+                    fetchData(currentSymbol, currentInterval);
+                } else {
+                    alert(`Error: ${res.error || res.details || 'Unknown error'}`);
+                }
+            } catch (e) {
+                syncCoinBtn.classList.remove('animate-spin', 'text-accent-blue');
+                document.body.style.cursor = 'default';
+                console.error(e);
+                alert("An error occurred while syncing.");
             }
         });
     }

@@ -187,6 +187,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Force Sync Logic ---
+    const forceSyncBtn = document.getElementById('force-sync-btn');
+    if (forceSyncBtn) {
+        forceSyncBtn.addEventListener('click', async () => {
+            if (!currentSymbol) return;
+
+            if (!confirm(`Force Sync ${currentSymbol} from Kraken? This helps if binance data is stale.`)) return;
+
+            try {
+                forceSyncBtn.classList.add('animate-pulse');
+                document.body.style.cursor = 'wait';
+
+                const response = await fetch('api/sync_coin.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol: currentSymbol, source: 'kraken' })
+                });
+                const res = await response.json();
+
+                forceSyncBtn.classList.remove('animate-pulse');
+                document.body.style.cursor = 'default';
+
+                if (res.success) {
+                    alert("Force Sync Successful!");
+                    fetchData(currentSymbol, currentInterval);
+                } else {
+                    alert(`Error: ${res.error || res.details || 'Unknown error'}`);
+                }
+            } catch (e) {
+                forceSyncBtn.classList.remove('animate-pulse');
+                document.body.style.cursor = 'default';
+                console.error(e);
+                alert("An error occurred while force syncing.");
+            }
+        });
+    }
+
     // --- Chart Page Logic ---
     if (chartContainer) {
         initChart();

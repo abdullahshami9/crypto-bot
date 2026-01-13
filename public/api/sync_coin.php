@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $input = json_decode(file_get_contents('php://input'), true);
 $symbol = isset($input['symbol']) ? $input['symbol'] : '';
+$source = isset($input['source']) ? $input['source'] : 'binance';
 
 if (empty($symbol)) {
     echo json_encode(['error' => 'Symbol is required']);
@@ -26,12 +27,13 @@ if (empty($symbol)) {
 
 // Sanitize symbol to prevent command injection
 $symbol = preg_replace('/[^A-Z0-9]/', '', strtoupper($symbol));
+$source = preg_replace('/[^a-z]/', '', strtolower($source));
 
 // Construct command to run python script
 // public/api/sync_coin.php -> ../../backend/sync_coin.py
 $pythonPath = "C:\\Users\\abdullah.shahmeer\\AppData\\Local\\Programs\\Python\\Python313\\python.exe";
 $scriptPath = __DIR__ . "/../../backend/sync_coin.py";
-$command = "\"$pythonPath\" \"$scriptPath\" --symbol " . escapeshellarg($symbol) . " 2>&1";
+$command = "\"$pythonPath\" \"$scriptPath\" --symbol " . escapeshellarg($symbol) . " --source " . escapeshellarg($source) . " 2>&1";
 exec($command, $output, $return_var);
 
 // Parse the output (looking for the JSON line)

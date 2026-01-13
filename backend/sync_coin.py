@@ -1,25 +1,44 @@
 import argparse
 import sys
 import json
-from data_ingest import update_historical_data, fetch_market_data, update_market_data, update_historical_data_from_kraken
+from data_ingest import (
+    update_historical_data,
+    fetch_market_data,
+    update_market_data,
+    update_historical_data_from_kraken
+)
 
 def sync_coin(symbol, source='binance'):
     intervals = ["15m", "1h", "4h", "1d", "1w", "1M"]
+    messages = []
+
     try:
-        print(f"Syncing {symbol} from {source}...")
+        print(f"Syncing {symbol} (initial source: {source})...")
 
+        # If source is explicit 'kraken', just use Kraken
         if source == 'kraken':
-            # Kraken typically uses XMRUSD or XMRUSDT (if available). 
-            # We need to ensure the symbol is formatted correctly for Kraken.
-            # For simplicity, pass the symbol as is, handle mapping in ingest.
             for interval in intervals:
-                update_historical_data_from_kraken(symbol, interval)
-        else:
-            # Default Binance
-            for interval in intervals:
-                update_historical_data(symbol, interval, limit=1000)
+                count = update_historical_data_from_kraken(symbol, interval)
+                messages.append(f"{interval}: {count} candles (Kraken)")
+            return True, "Sync complete (Kraken). Details: " + ", ".join(messages)
 
-        return True, "Sync complete"
+        # Default or 'binance' -> Try Binance first, with fallback
+        for interval in intervals:
+            # Try Binance
+            count = update_historical_data(symbol, interval, limit=1000)
+
+            # If Binance failed (0 candles), try Kraken as fallback
+            if count == 0:
+                 print(f"Binance returned 0 candles for {interval}. Attempting Kraken fallback...")
+                 k_count = update_historical_data_from_kraken(symbol, interval)
+                 if k_count > 0:
+                     messages.append(f"{interval}: {k_count} (Kraken)")
+                 else:
+                     messages.append(f"{interval}: 0 (Both failed)")
+            else:
+                 messages.append(f"{interval}: {count} (Binance)")
+
+        return True, "Sync complete. " + ", ".join(messages)
     except Exception as e:
         return False, str(e)
 

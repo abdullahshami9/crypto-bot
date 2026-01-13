@@ -12,6 +12,11 @@ def fetch_market_data():
     for i in range(retries):
         try:
             response = requests.get(BINANCE_TICKER_URL, timeout=10)
+            # Check for 451 or 403 explicitly as they mean we are blocked
+            if response.status_code in [403, 451]:
+                print(f"Error fetching data from Binance: {response.status_code} - Restricted Location")
+                return []
+
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -36,6 +41,12 @@ def fetch_historical_candles(symbol, interval="1h", limit=1000, start_time=None)
     for i in range(retries):
         try:
             response = requests.get(BINANCE_KLINES_URL, params=params, timeout=10)
+
+            if response.status_code in [403, 451]:
+                 # Restricted location or forbidden
+                 print(f"Error fetching historical data for {symbol}: {response.status_code} - Restricted Location")
+                 return []
+
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -96,10 +107,13 @@ def update_historical_data(symbol, interval="1h", limit=None):
     3. If not, fetch full history (from 0 if requested, or lookback). 
        Binance allows fetching from 0, but that might be heavy. 
        Let's assume user wants full history.
+
+    Returns:
+        int: Number of candles synced (0 if failed or up-to-date)
     """
     conn = get_db_connection()
     if not conn:
-        return
+        return 0
 
     cursor = conn.cursor()
     
@@ -126,11 +140,11 @@ def update_historical_data(symbol, interval="1h", limit=None):
     total_candles = 0
     
     while True:
-        print(f"DEBUG: Fetching from start_ts={start_ts} limit={batch_size}")
+        # print(f"DEBUG: Fetching from start_ts={start_ts} limit={batch_size}")
         candles = fetch_historical_candles(symbol, interval, limit=batch_size, start_time=start_ts)
         
         if not candles:
-            print("DEBUG: No candles returned.")
+            print("DEBUG: No candles returned from Binance.")
             break
             
         print(f"Fetched {len(candles)} candles locally...")
@@ -162,7 +176,7 @@ def update_historical_data(symbol, interval="1h", limit=None):
             )
             batch_values.append(val)
         
-        print(f"DEBUG: Last close TS: {last_candle_close_ts}, New Start TS: {last_candle_close_ts + 1}")
+        # print(f"DEBUG: Last close TS: {last_candle_close_ts}, New Start TS: {last_candle_close_ts + 1}")
         
         if batch_values:
             try:
@@ -184,16 +198,20 @@ def update_historical_data(symbol, interval="1h", limit=None):
         time.sleep(0.1)
 
     print(f"[{symbol} {interval}] Sync complete. Total candles updated: {total_candles}")
+    cursor.close()
+    conn.close()
+    return total_candles
 
 # --- Kraken Integration ---
 
 KRAKEN_OHLC_URL = "https://api.kraken.com/0/public/OHLC"
 
-def fetch_kraken_ohlc(pair, interval):
+def fetch_kraken_ohlc(pair, interval, since=None):
     """
     Fetches OHLC data from Kraken.
     Pair: e.g., XMRUSD
     Interval: e.g., '1h' (mapped to Kraken minutes)
+    Since: Unix timestamp (seconds) or last ID to fetch since.
     """
     # Map Binance-style intervals to Kraken minutes
     interval_map = {
@@ -202,8 +220,7 @@ def fetch_kraken_ohlc(pair, interval):
         "4h": 240,
         "1d": 1440,
         "1w": 10080,
-        "1M": 21600 # 15 days is closest max, but Kraken doesn't do 1M perfectly. 
-                    # 21600 = 15 days.
+        "1M": 21600
     }
     
     kraken_interval = interval_map.get(interval, 60)
@@ -212,6 +229,8 @@ def fetch_kraken_ohlc(pair, interval):
         "pair": pair,
         "interval": kraken_interval
     }
+    if since:
+        params['since'] = since
     
     try:
         response = requests.get(KRAKEN_OHLC_URL, params=params, timeout=10)
@@ -225,7 +244,33 @@ def update_historical_data_from_kraken(symbol, interval="1h"):
     """
     Fetches data from Kraken and upserts into DB.
     Requires symbol mapping (e.g. XMRUSDT -> XMRUSD).
+    Implements pagination using 'since'.
+
+    Returns:
+        int: Number of candles synced
     """
+    conn = get_db_connection()
+    if not conn: return 0
+    cursor = conn.cursor()
+
+    # 1. Get last close time from DB to determine 'since'
+    #    (or should we trust Kraken to fill partials?)
+    #    For consistency, let's find the last DB time.
+    query = "SELECT MAX(close_time) FROM historical_candles WHERE symbol = %s AND `interval` = %s"
+    cursor.execute(query, (symbol, interval))
+    result = cursor.fetchone()
+    last_close_time_db = result[0] if result else None
+
+    since_ts = None
+    if last_close_time_db:
+        # Kraken 'since' is seconds.
+        # Add 1 second? Kraken usually includes the candle covering 'since' or after.
+        since_ts = int(last_close_time_db.timestamp())
+        print(f"[{symbol} {interval}] Found existing data. Fetching from Kraken since {last_close_time_db} ({since_ts})...")
+    else:
+        print(f"[{symbol} {interval}] No existing data. Fetching full history from Kraken...")
+        since_ts = 0 # Or None, to get default (last 720)
+
     # Simple mapping strategy for MVP
     # If ends with USDT, try replacing with USD.
     kraken_pair = symbol
@@ -234,72 +279,107 @@ def update_historical_data_from_kraken(symbol, interval="1h"):
     
     print(f"[{symbol} ({kraken_pair})] fetching from Kraken...")
     
-    data = fetch_kraken_ohlc(kraken_pair, interval)
+    total_synced = 0
+    # Safety loop limit
+    MAX_LOOPS = 50
     
-    if not data or 'result' not in data:
-        print(f"Invalid response from Kraken for {kraken_pair}")
-        return
+    for i in range(MAX_LOOPS):
+        data = fetch_kraken_ohlc(kraken_pair, interval, since=since_ts)
 
-    # Kraken returns 'result': { 'XXMRZUSD': [[...]], 'last': ... }
-    # Since the key name is dynamic (e.g. XXMRZUSD), we just take the first list value found.
-    result_data = data['result']
-    candles = []
-    
-    for key, val in result_data.items():
-        if key == 'last': continue
-        if isinstance(val, list):
-            candles = val
+        if not data or 'result' not in data:
+            print(f"Invalid response from Kraken for {kraken_pair}")
             break
-            
-    if not candles:
-        print("No candles found in Kraken response.")
-        return
 
-    conn = get_db_connection()
-    if not conn: return
-    cursor = conn.cursor()
+        # Kraken returns 'result': { 'XXMRZUSD': [[...]], 'last': ... }
+        result_data = data['result']
+        candles = []
 
-    sql = """
-    REPLACE INTO historical_candles (symbol, `interval`, open, high, low, close, volume, close_time)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """
+        # Dynamic key extraction
+        for key, val in result_data.items():
+            if key == 'last': continue
+            if isinstance(val, list):
+                candles = val
+                break
 
-    count = 0
-    batch_values = []
-    
-    for candle in candles:
-        # Kraken Format: [int <time>, string <open>, string <high>, string <low>, string <close>, string <vwap>, string <volume>, int <count>]
-        # Time is unix timestamp (seconds)
-        
-        ts = int(candle[0])
-        close_time = datetime.fromtimestamp(ts)
-        
-        # Open, High, Low, Close are strings
-        op = float(candle[1])
-        hi = float(candle[2])
-        lo = float(candle[3])
-        cl = float(candle[4])
-        vol = float(candle[6])
-        
-        val = (
-            symbol, # Store as original symbol (XMRUSDT) to match app schema
-            interval, 
-            op, hi, lo, cl, vol, 
-            close_time
-        )
-        batch_values.append(val)
-        count += 1
-        
-    if batch_values:
-        try:
-            cursor.executemany(sql, batch_values)
-            conn.commit()
-            print(f"[{symbol}] Kraken Sync: Imported {len(batch_values)} candles for {interval}.")
-        except Exception as e:
-            print(f"Error inserting Kraken batch: {e}")
+        if not candles:
+            print("No candles found in Kraken response.")
+            break
 
+        # Get the 'last' ID for pagination
+        last_id = result_data.get('last')
+        
+        # If we received no new data compared to what we asked for, stop.
+        # (Kraken might return the same last candle?)
+        # Let's check timestamps.
+        
+        if len(candles) == 0:
+            break
+
+        print(f"Fetched {len(candles)} candles from Kraken...")
+
+        sql = """
+        REPLACE INTO historical_candles (symbol, `interval`, open, high, low, close, volume, close_time)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+
+        batch_values = []
+        latest_ts_in_batch = 0
+        
+        for candle in candles:
+            # Kraken Format: [int <time>, string <open>, string <high>, string <low>, string <close>, string <vwap>, string <volume>, int <count>]
+            ts = int(candle[0])
+            latest_ts_in_batch = max(latest_ts_in_batch, ts)
+
+            # Skip if older than requested since_ts (overlap safety)
+            if since_ts and ts <= since_ts and i > 0:
+                # On first iteration, since_ts might be exactly the last candle.
+                # Kraken returns inclusive sometimes.
+                pass
+
+            close_time = datetime.fromtimestamp(ts)
+
+            val = (
+                symbol,
+                interval,
+                float(candle[1]),
+                float(candle[2]),
+                float(candle[3]),
+                float(candle[4]),
+                float(candle[6]),
+                close_time
+            )
+            batch_values.append(val)
+
+        if batch_values:
+            try:
+                cursor.executemany(sql, batch_values)
+                conn.commit()
+                total_synced += len(batch_values)
+            except Exception as e:
+                print(f"Error inserting Kraken batch: {e}")
+        
+        # Update since_ts for next iteration
+        if last_id:
+            # If last_id is same as previous since_ts, we are done
+            if since_ts == last_id:
+                print("Pagination complete (no new ID).")
+                break
+            since_ts = last_id
+        else:
+            # No last ID?
+            break
+
+        # If the batch was smaller than limit (720), we are probably at the end
+        if len(candles) < 720:
+             print("Reached end of data stream.")
+             break
+
+        time.sleep(1) # Rate limit
+
+    print(f"[{symbol}] Kraken Sync Complete: Imported {total_synced} candles for {interval}.")
     cursor.close()
     conn.close()
+    return total_synced
 
 if __name__ == "__main__":
     # Define intervals to track
